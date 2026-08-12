@@ -1,0 +1,19 @@
+(library
+ (name import_analysis_lib)
+ (public_name rocq-import-analysis.lib)
+ (wrapped false)
+ (modules domain_scan clash_detect glob_capture report)
+ (flags
+  (:standard -rectypes -w -27))
+ (libraries rocq-runtime.vernac))
+
+(library
+ (name import_analysis_plugin)
+ (public_name rocq-import-analysis.plugin)
+ (modules g_import_analysis)
+ (flags
+  (:standard -rectypes -w -27))
+ (libraries rocq-runtime.vernac import_analysis_lib))
+
+(rocq.pp
+ (modules g_import_analysis))

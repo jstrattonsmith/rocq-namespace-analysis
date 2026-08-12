@@ -1,0 +1,13 @@
+(executable
+ (name import_analysis_cli)
+ (public_name import-analysis)
+ (flags
+  (:standard -rectypes -w -27))
+ (libraries
+  rocq-runtime.sysinit
+  rocq-runtime.stm
+  rocq-runtime.toplevel
+  rocq-runtime.vernac
+  rocq-runtime.coqargs
+  rocq-runtime.boot
+  import_analysis_lib))

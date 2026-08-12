@@ -1,0 +1,3 @@
+(rocq.theory
+ (name ImportAnalysis)
+ (plugins rocq-import-analysis.plugin))

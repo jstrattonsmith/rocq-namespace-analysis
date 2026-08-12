@@ -1,0 +1,6 @@
+ImportAnalysis: 3 symbol(s) in scanned domain(s)
+Clashes:
+  K -> MyDev.PartB.K (shadows MyDev.PartA.K)
+Used identifiers:
+  helper -> MyDev.PartA
+  K -> MyDev.PartB

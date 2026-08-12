@@ -1,0 +1,37 @@
+DECLARE PLUGIN "rocq-import-analysis.plugin"
+
+{
+
+open Names
+open Pp
+open Stdarg
+
+let () = Glob_capture.install ()
+
+let qualid_to_dirpath q =
+  let (dp, id) = Libnames.repr_qualid q in
+  Libnames.add_dirpath_suffix dp id
+
+let run_import_analysis domains =
+  let domains = List.map qualid_to_dirpath domains in
+  if domains = [] then
+    CErrors.user_err (str "ImportAnalysis requires at least one domain, e.g. ImportAnalysis MyDev.PartA.")
+  else begin
+    let members = Domain_scan.members_of_domains domains in
+    let clashes = Clash_detect.find_clashes members in
+    let used = Glob_capture.occurrences () in
+    let report = Report.make ~member_count:(List.length members) ~clashes ~used in
+    Feedback.msg_notice (Report.to_pp report)
+  end
+
+}
+
+VERNAC COMMAND EXTEND ImportAnalysisHello CLASSIFIED AS QUERY
+| [ "ImportAnalysis" "Hello" ] ->
+  { Feedback.msg_notice (Pp.str "ImportAnalysis plugin loaded.") }
+END
+
+VERNAC COMMAND EXTEND ImportAnalysisRun CLASSIFIED AS QUERY
+| [ "ImportAnalysis" ne_reference_list(domains) ] ->
+  { run_import_analysis domains }
+END

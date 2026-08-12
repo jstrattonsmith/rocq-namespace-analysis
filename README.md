@@ -1,0 +1,135 @@
+# ImportAnalysis
+
+A tool for Rocq (formerly Coq) proof developments that reports where every
+identifier used in a file is actually defined, and proactively flags name
+clashes among imported symbols — e.g. two different imported libraries each
+defining a lemma/function called `K`, where Rocq's "last import wins"
+shadowing rule silently picks one of them.
+
+Usable two ways from a single shared analysis engine:
+
+- **Inside a `.v` file**, as a native vernacular command that prints into the
+  proof/message panel:
+
+  ```coq
+  From ImportAnalysis Require Import Loader.
+  From MyDev Require Import PartA.
+  From MyDev Require Import PartB.
+
+  ImportAnalysis MyDev.PartA MyDev.PartB.
+  ```
+
+- **From the command line**, for CI, editors, or LLM-agent tooling:
+
+  ```sh
+  import-analysis -R path/to/libs MyDev \
+    --domain MyDev.PartA --domain MyDev.PartB \
+    MyFile.v
+  ```
+
+Both report, for the given domain(s) (library/module prefixes, in the same
+style as `Print Namespace`):
+
+1. Every short name with more than one visible candidate definition (a
+   clash), showing which one currently wins and what it shadows.
+2. Every identifier the file actually uses, resolved to its fully-qualified
+   defining location.
+
+## Why this exists
+
+Several developments have broken because of exactly this kind of import
+clash, and Rocq has no built-in aggregate report for it: `Locate` and `Print
+Namespace` each show part of the picture, but only interactively, one
+identifier or one namespace at a time. This tool is a thin synthesis of
+machinery Rocq already ships — no new parser or elaborator required:
+
+- **Clash detection** uses `Nametab.locate_all`, the exact function `Locate`
+  itself calls to enumerate every visible candidate for a short name.
+- **Domain enumeration** uses `Environ.fold_constants`/`fold_inductives`
+  filtered by dirpath prefix — what `Print Namespace` uses internally.
+- **Used-identifier resolution** hijacks `Dumpglob`'s `Feedback` output mode
+  (normally used to generate `.glob` files for `coqdoc`) to capture, in
+  memory, every identifier the elaborator resolves.
+
+## Layout
+
+```
+src/
+  domain_scan.ml      Enumerate constants/inductives under given dirpath prefixes.
+  clash_detect.ml      For each name, find every candidate via Nametab.locate_all.
+  glob_capture.ml       Capture resolved identifiers via Dumpglob.Feedback.
+  report.ml              Shared report type + renderer (used by both front ends).
+  g_import_analysis.mlg   The `ImportAnalysis` vernacular command (native plugin).
+theories/
+  Loader.v                `Declare ML Module` — Require Import this to load the plugin.
+cli/
+  import_analysis_cli.ml  Standalone driver: loads a Rocq document like `coqtop -l`,
+                           runs the same analysis, prints to stdout.
+test/
+  fixtures/, expected/, run_test.sh   Two libraries with a clashing `K`; checks that
+                                       the plugin and CLI reports match each other and
+                                       a known-good expected report.
+```
+
+## Building
+
+Requires the Rocq 9.x toolchain. On macOS via Homebrew:
+
+```sh
+brew install ocaml dune rocq
+```
+
+Then, from the repository root:
+
+```sh
+export LIBRARY_PATH="/opt/homebrew/lib:$LIBRARY_PATH"   # needed for gmp at link time
+dune build
+```
+
+To use the plugin (native command or CLI) outside of `dune build`, put the
+locally built package on `OCAMLPATH`:
+
+```sh
+export OCAMLPATH="$(pwd)/_build/install/default/lib:$OCAMLPATH"
+```
+
+## Running the tests
+
+```sh
+bash test/run_test.sh
+```
+
+This builds two fixture libraries that both define `Lemma K`, then checks
+that the native plugin command and the external CLI report the identical
+clash (`K -> MyDev.PartB.K (shadows MyDev.PartA.K)`) and identical resolved
+used-identifiers, matching a checked-in expected report.
+
+## Known limitations (v1)
+
+- **Capture starts at plugin load time.** The native command only sees
+  identifiers used *after* `Require Import Loader.`, so that must be the
+  first line of anything you want analyzed. The CLI doesn't have this
+  restriction — it installs capture itself before loading the target file.
+- **Shadows real `.glob` output.** Enabling capture overrides Rocq's normal
+  `-dump-glob` file output for the rest of that compilation unit. Irrelevant
+  unless you're simultaneously generating `coqdoc` documentation from the
+  same run.
+- **Domain arguments are library/module prefixes only** (e.g. `MyDev.PartA`),
+  matching `Print Namespace`'s argument style. File-path domains are a
+  planned extension, not yet built.
+- **Clash scope is intentionally asymmetric**: domain arguments select which
+  short names get *probed*, but once probed, every visible candidate is
+  reported — even ones outside the named domains. This mirrors how `Locate`
+  itself behaves and avoids hiding a real clash just because a third library
+  wasn't named.
+- The CLI always exits `0`; a `--strict` flag for CI gating (nonzero exit on
+  any clash) isn't built yet.
+
+## Roadmap
+
+- File-path domain arguments (resolve a `.v` path to its module prefix).
+- `--strict` CI exit-code mode.
+- Additional regression fixtures: a domain argument matching nothing (should
+  say so, not silently report a clean bill of health), a `Require`-without-
+  `Import`ed library's definitions correctly absent from candidates, and a
+  clash against the standard library.

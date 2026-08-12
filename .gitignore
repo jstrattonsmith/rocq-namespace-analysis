@@ -1,0 +1,14 @@
+_build/
+*.vo
+*.vos
+*.vok
+*.glob
+.*.aux
+*.cmi
+*.cmo
+*.cmx
+*.cmxs
+*.o
+*.install
+.merlin
+.DS_Store

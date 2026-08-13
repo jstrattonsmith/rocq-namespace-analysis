@@ -73,7 +73,28 @@ test/
 
 ## Building
 
-Requires the Rocq 9.x toolchain. On macOS via Homebrew:
+### With Nix (recommended)
+
+```sh
+nix develop
+dune build
+```
+
+`flake.nix` provides `rocq-core` (currently pinned via `rocqPackages_9_1` —
+9.2 isn't on the `nixpkgs-unstable` channel yet, only on `nixpkgs` master,
+which would force a from-source build instead of fetching a cached binary),
+its version-matched `ocamlPackages` (OCaml 4.14 for the 9.1 line), `dune`,
+`findlib`, and `zarith` — nothing else needs to be installed on the host.
+`ocamlfind list` finds every `rocq-runtime.*` package automatically inside
+the shell (Nix wires this up via its own findlib setup-hook, not manual
+`OCAMLPATH`/`LIBRARY_PATH` exports); the `shellHook` additionally puts this
+project's own `_build/install/default/lib` on `OCAMLPATH` once you've run
+`dune build`, so `Declare ML Module` and the CLI work immediately with no
+manual export at all. `flake.lock` pins the exact nixpkgs revision for
+reproducibility — update it deliberately with `nix flake lock`, not as a
+side effect of other changes.
+
+### With Homebrew (alternative)
 
 ```sh
 brew install ocaml dune rocq
@@ -84,20 +105,22 @@ Then, from the repository root:
 ```sh
 export LIBRARY_PATH="/opt/homebrew/lib:$LIBRARY_PATH"   # needed for gmp at link time
 dune build
-```
-
-To use the plugin (native command or CLI) outside of `dune build`, put the
-locally built package on `OCAMLPATH`:
-
-```sh
 export OCAMLPATH="$(pwd)/_build/install/default/lib:$OCAMLPATH"
 ```
+
+Both paths build the identical `dune-project` (currently capped at
+`(lang dune 3.23)` / `(using rocq 0.13)` to match what Nix's `dune_3`
+currently supports — Homebrew's newer dune accepts these older language
+versions too, so this cap doesn't cost anything there).
 
 ## Running the tests
 
 ```sh
 bash test/run_test.sh
 ```
+
+Toolchain-agnostic: run it inside `nix develop`, or with Homebrew's
+`rocq`/`dune` on `PATH` and `LIBRARY_PATH` exported as above.
 
 This builds two fixture libraries that both define `Lemma K`, then checks
 that the native plugin command and the external CLI report the identical

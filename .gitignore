@@ -12,3 +12,6 @@ _build/
 *.install
 .merlin
 .DS_Store
+result
+result-*
+.direnv/

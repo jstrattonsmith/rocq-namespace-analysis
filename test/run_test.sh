@@ -6,8 +6,9 @@
 # Usage: bash test/run_test.sh   (run from the repository root)
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:$PATH"
-export LIBRARY_PATH="/opt/homebrew/lib:${LIBRARY_PATH:-}"
+# Toolchain-agnostic: run this either inside `nix develop` (recommended -- see
+# flake.nix) or with a Homebrew-installed `rocq`/`dune` on PATH, in which case
+# also export LIBRARY_PATH=/opt/homebrew/lib first (see README).
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

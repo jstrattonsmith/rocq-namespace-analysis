@@ -1,6 +1,16 @@
 NamespaceAnalysis: 3 symbol(s) in scanned domain(s)
 Clashes:
-  K -> MyDev.PartB.K (shadows MyDev.PartA.K)
+┌────────────┬───────────────────────────┐
+│ Short name │ Candidates (alphabetical) │
+├────────────┼───────────────────────────┤
+│ K          │ MyDev.PartA.K             │
+│            │ MyDev.PartB.K <- used     │
+└────────────┴───────────────────────────┘
 Used identifiers:
-  helper -> MyDev.PartA
-  K -> MyDev.PartB
+┌────────────┬─────────────┐
+│ Identifier │ Defined in  │
+├────────────┼─────────────┤
+│ helper     │ MyDev.PartA │
+├────────────┼─────────────┤
+│ K          │ MyDev.PartB │
+└────────────┴─────────────┘

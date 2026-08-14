@@ -9,30 +9,41 @@ let usage =
         "\n\
          namespace-analysis specific options:\n\
          \n\
-        \  --domain <dirpath>     scan this library/module prefix for clashes (repeatable)\n";
+        \  --domain <dirpath>     scan this library/module prefix for clashes\n\
+        \                         (repeatable; 0 domains = everything currently\n\
+        \                         imported, including auto-loaded Corelib)\n\
+        \  --exclude <dirpath>    hide candidates under this prefix (repeatable;\n\
+        \                         Corelib is excluded by default)\n\
+        \  --include <dirpath>    un-hide a prefix (repeatable; overrides both\n\
+        \                         the Corelib default and --exclude)\n";
     }
 
-(* Consumes our own --domain/<file> arguments, leaving everything else
-   (standard -R/-Q/-I flags, etc.) for Coqargs.parse_args to handle, mirroring
-   how coqtop.ml's parse_extra hands off to Stmargs.parse_args and then to
-   the standard argument parser inside Coqinit.parse_arguments. *)
+(* Consumes our own --domain/--exclude/--include/<file> arguments, leaving
+   everything else (standard -R/-Q/-I flags, etc.) for Coqargs.parse_args to
+   handle, mirroring how coqtop.ml's parse_extra hands off to
+   Stmargs.parse_args and then to the standard argument parser inside
+   Coqinit.parse_arguments. *)
 let parse_extra opts extras =
-  let rec go domains file = function
-    | "--domain" :: d :: rest -> go (d :: domains) file rest
+  let rec go domains excl incl file = function
+    | "--domain" :: d :: rest -> go (d :: domains) excl incl file rest
+    | "--exclude" :: d :: rest -> go domains (d :: excl) incl file rest
+    | "--include" :: d :: rest -> go domains excl (d :: incl) file rest
     | x :: rest when file = None && (String.length x = 0 || x.[0] <> '-') ->
-      go domains (Some x) rest
+      go domains excl incl (Some x) rest
     | x :: rest ->
-      let (domains, file), rest = go domains file rest in
-      (domains, file), x :: rest
-    | [] -> (domains, file), []
+      let (domains, excl, incl, file), rest = go domains excl incl file rest in
+      (domains, excl, incl, file), x :: rest
+    | [] -> (domains, excl, incl, file), []
   in
-  let (domains, file), extras = go [] None extras in
+  let (domains, excl, incl, file), extras = go [] [] [] None extras in
   let async_opts, extras = Stmargs.parse_args opts extras in
-  (List.rev domains, file, async_opts), extras
+  (List.rev domains, List.rev excl, List.rev incl, file, async_opts), extras
 
 let dirpath_of_string s =
   let parts = String.split_on_char '.' s in
   DirPath.make (List.rev_map Id.of_string parts)
+
+let default_excludes = [ dirpath_of_string "Corelib" ]
 
 let die msg =
   prerr_endline ("namespace-analysis: " ^ msg);
@@ -41,10 +52,9 @@ let die msg =
 let () =
   Coqinit.init_ocaml ();
   let args = List.tl (Array.to_list Sys.argv) in
-  let opts, (domain_strs, file, async_opts) =
+  let opts, (domain_strs, excl_strs, incl_strs, file, async_opts) =
     Coqinit.parse_arguments ~parse_extra ~initial_args:Coqargs.default args
   in
-  if domain_strs = [] then die "need at least one --domain <dirpath>";
   let f_in = match file with
     | Some f -> f
     | None -> die "need a target .v file"
@@ -71,10 +81,18 @@ let () =
   let state = Vernac.load_vernac ~echo:false ~check:true ~state ~source f_in in
   let _fullstate = Stm.finish ~doc:state.doc in
   Stm.join ~doc:state.doc;
-  let domains = List.map dirpath_of_string domain_strs in
-  let members = Domain_scan.members_of_domains domains in
-  let clashes = Clash_detect.find_clashes members in
+  let dps = if domain_strs = [] then Library.loaded_libraries () else List.map dirpath_of_string domain_strs in
+  List.iter Ensure_loaded.ensure_required dps;
+  let excl_dps = List.map dirpath_of_string excl_strs in
+  let incl_dps = List.map dirpath_of_string incl_strs in
+  let excluded =
+    List.filter
+      (fun e -> not (List.exists (DirPath.equal e) incl_dps))
+      (default_excludes @ excl_dps)
+  in
+  let members = Domain_scan.members_of_domains dps in
+  let clashes = Clash_detect.find_clashes ~excluded members in
   let used = Glob_capture.occurrences () in
   let report = Report.make ~member_count:(List.length members) ~clashes ~used in
-  print_string (Report.to_string report);
+  print_string (Report.to_string ~color:(Unix.isatty Unix.stdout) report);
   print_newline ()

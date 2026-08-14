@@ -16,4 +16,9 @@ val make :
   t
 
 val to_pp : t -> Pp.t
-val to_string : t -> string
+
+(** [color] (default [false]) additionally wraps the winning candidate in
+    bold+ANSI color codes; pass [~color:(Unix.isatty Unix.stdout)] from a
+    terminal front end. The plain-text winner marker is always present
+    regardless. *)
+val to_string : ?color:bool -> t -> string

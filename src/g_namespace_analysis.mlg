@@ -12,17 +12,28 @@ let qualid_to_dirpath q =
   let (dp, id) = Libnames.repr_qualid q in
   Libnames.add_dirpath_suffix dp id
 
-let run_namespace_analysis domains =
+(* The always-loaded prelude, hidden from clash candidates by default --
+   see Ensure_loaded/Clash_detect for why this is only a candidate-set
+   filter, never a probe-set filter. Override per-call with `Including
+   Corelib`. *)
+let default_excludes = [ DirPath.make [ Id.of_string "Corelib" ] ]
+
+let run_namespace_analysis domains excl incl =
   let domains = List.map qualid_to_dirpath domains in
-  if domains = [] then
-    CErrors.user_err (str "NamespaceAnalysis requires at least one domain, e.g. NamespaceAnalysis MyDev.PartA.")
-  else begin
-    let members = Domain_scan.members_of_domains domains in
-    let clashes = Clash_detect.find_clashes members in
-    let used = Glob_capture.occurrences () in
-    let report = Report.make ~member_count:(List.length members) ~clashes ~used in
-    Feedback.msg_notice (Report.to_pp report)
-  end
+  let dps = if domains = [] then Library.loaded_libraries () else domains in
+  List.iter Ensure_loaded.ensure_required dps;
+  let excl_dps = List.map qualid_to_dirpath excl in
+  let incl_dps = List.map qualid_to_dirpath incl in
+  let excluded =
+    List.filter
+      (fun e -> not (List.exists (DirPath.equal e) incl_dps))
+      (default_excludes @ excl_dps)
+  in
+  let members = Domain_scan.members_of_domains dps in
+  let clashes = Clash_detect.find_clashes ~excluded members in
+  let used = Glob_capture.occurrences () in
+  let report = Report.make ~member_count:(List.length members) ~clashes ~used in
+  Feedback.msg_notice (Report.to_pp report)
 
 }
 
@@ -31,7 +42,23 @@ VERNAC COMMAND EXTEND NamespaceAnalysisHello CLASSIFIED AS QUERY
   { Feedback.msg_notice (Pp.str "NamespaceAnalysis plugin loaded.") }
 END
 
+(* A bare `reference_list` cannot be followed directly by a bare keyword
+   clause: "Excluding"/"Including" are syntactically just more identifiers
+   to the grammar (nothing reserves them), so `reference_list(domains)`
+   greedily swallows them as extra domain references with no way to back
+   off -- confirmed by direct testing (reordering alternatives didn't help;
+   Rocq's LIST0 combinator here doesn't backtrack). The fix, precedented by
+   Rocq's own `Hint ... : db` syntax for this exact list/keyword ambiguity:
+   require a literal ":" before each keyword clause. ":" can never be
+   parsed as part of a reference, so `reference_list`/`ne_reference_list`
+   naturally stop there via simple lookahead, no backtracking needed. *)
 VERNAC COMMAND EXTEND NamespaceAnalysisRun CLASSIFIED AS QUERY
-| [ "NamespaceAnalysis" ne_reference_list(domains) ] ->
-  { run_namespace_analysis domains }
+| [ "NamespaceAnalysis" reference_list(domains) ":" "Excluding" ne_reference_list(excl) ":" "Including" ne_reference_list(incl) ] ->
+  { run_namespace_analysis domains excl incl }
+| [ "NamespaceAnalysis" reference_list(domains) ":" "Excluding" ne_reference_list(excl) ] ->
+  { run_namespace_analysis domains excl [] }
+| [ "NamespaceAnalysis" reference_list(domains) ":" "Including" ne_reference_list(incl) ] ->
+  { run_namespace_analysis domains [] incl }
+| [ "NamespaceAnalysis" reference_list(domains) ] ->
+  { run_namespace_analysis domains [] [] }
 END

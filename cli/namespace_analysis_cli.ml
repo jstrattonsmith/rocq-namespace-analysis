@@ -3,11 +3,11 @@ open Names
 let usage =
   Boot.Usage.
     {
-      executable_name = "import-analysis";
+      executable_name = "namespace-analysis";
       extra_args = "file.v";
       extra_options =
         "\n\
-         import-analysis specific options:\n\
+         namespace-analysis specific options:\n\
          \n\
         \  --domain <dirpath>     scan this library/module prefix for clashes (repeatable)\n";
     }
@@ -35,7 +35,7 @@ let dirpath_of_string s =
   DirPath.make (List.rev_map Id.of_string parts)
 
 let die msg =
-  prerr_endline ("import-analysis: " ^ msg);
+  prerr_endline ("namespace-analysis: " ^ msg);
   exit 1
 
 let () =

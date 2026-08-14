@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for ImportAnalysis: builds two libraries that both define a
+# Regression test for NamespaceAnalysis: builds two libraries that both define a
 # lemma `K`, then checks that both the native plugin command and the
 # external CLI report the same clash + used-identifier resolution.
 #
@@ -28,15 +28,15 @@ rocq compile -R "$WORK" MyDev "$WORK/PartB.v" >/dev/null
 
 echo "==> native plugin command (Main.v)"
 PLUGIN_OUT="$WORK/plugin_out.txt"
-rocq compile -R _build/default/theories ImportAnalysis -R "$WORK" MyDev \
+rocq compile -R _build/default/theories NamespaceAnalysis -R "$WORK" MyDev \
   test/fixtures/Main.v > "$PLUGIN_OUT" 2>&1
-# The report starts at the "ImportAnalysis:" header; strip the preceding
+# The report starts at the "NamespaceAnalysis:" header; strip the preceding
 # `Check` output, which is incidental to this test.
-sed -n '/^ImportAnalysis:/,$p' "$PLUGIN_OUT" > "$WORK/plugin_report.txt"
+sed -n '/^NamespaceAnalysis:/,$p' "$PLUGIN_OUT" > "$WORK/plugin_report.txt"
 
 echo "==> external CLI (MainCli.v)"
 CLI_OUT="$WORK/cli_report.txt"
-./_build/default/cli/import_analysis_cli.exe \
+./_build/default/cli/namespace_analysis_cli.exe \
   -R "$WORK" MyDev --domain MyDev.PartA --domain MyDev.PartB \
   test/fixtures/MainCli.v > "$CLI_OUT"
 

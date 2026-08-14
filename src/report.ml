@@ -30,7 +30,7 @@ let pr_occurrence (o : Glob_capture.occurrence) =
 
 let to_pp (r : t) =
   let header =
-    str "ImportAnalysis: " ++ int r.member_count ++ str " symbol(s) in scanned domain(s)"
+    str "NamespaceAnalysis: " ++ int r.member_count ++ str " symbol(s) in scanned domain(s)"
   in
   let clash_body =
     if r.clashes = [] then str "No clashes found."

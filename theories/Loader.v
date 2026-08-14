@@ -1,1 +1,1 @@
-Declare ML Module "rocq-import-analysis.plugin".
+Declare ML Module "rocq-namespace-analysis.plugin".

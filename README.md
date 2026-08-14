@@ -1,4 +1,4 @@
-# ImportAnalysis
+# NamespaceAnalysis
 
 A tool for Rocq (formerly Coq) proof developments that reports where every
 identifier used in a file is actually defined, and proactively flags name
@@ -12,17 +12,17 @@ Usable two ways from a single shared analysis engine:
   proof/message panel:
 
   ```coq
-  From ImportAnalysis Require Import Loader.
+  From NamespaceAnalysis Require Import Loader.
   From MyDev Require Import PartA.
   From MyDev Require Import PartB.
 
-  ImportAnalysis MyDev.PartA MyDev.PartB.
+  NamespaceAnalysis MyDev.PartA MyDev.PartB.
   ```
 
 - **From the command line**, for CI, editors, or LLM-agent tooling:
 
   ```sh
-  import-analysis -R path/to/libs MyDev \
+  namespace-analysis -R path/to/libs MyDev \
     --domain MyDev.PartA --domain MyDev.PartB \
     MyFile.v
   ```
@@ -34,6 +34,9 @@ style as `Print Namespace`):
    clash), showing which one currently wins and what it shadows.
 2. Every identifier the file actually uses, resolved to its fully-qualified
    defining location.
+
+A related but distinct command, `ImportAnalysis`, is planned as a follow-up
+(designed, not yet built) — see the Roadmap section.
 
 ## Why this exists
 
@@ -55,16 +58,16 @@ machinery Rocq already ships — no new parser or elaborator required:
 
 ```
 src/
-  domain_scan.ml      Enumerate constants/inductives under given dirpath prefixes.
-  clash_detect.ml      For each name, find every candidate via Nametab.locate_all.
-  glob_capture.ml       Capture resolved identifiers via Dumpglob.Feedback.
-  report.ml              Shared report type + renderer (used by both front ends).
-  g_import_analysis.mlg   The `ImportAnalysis` vernacular command (native plugin).
+  domain_scan.ml         Enumerate constants/inductives under given dirpath prefixes.
+  clash_detect.ml         For each name, find every candidate via Nametab.locate_all.
+  glob_capture.ml           Capture resolved identifiers via Dumpglob.Feedback.
+  report.ml                   Shared report type + renderer (used by both front ends).
+  g_namespace_analysis.mlg      The `NamespaceAnalysis` vernacular command (native plugin).
 theories/
-  Loader.v                `Declare ML Module` — Require Import this to load the plugin.
+  Loader.v                        `Declare ML Module` — Require Import this to load the plugin.
 cli/
-  import_analysis_cli.ml  Standalone driver: loads a Rocq document like `coqtop -l`,
-                           runs the same analysis, prints to stdout.
+  namespace_analysis_cli.ml  Standalone driver: loads a Rocq document like `coqtop -l`,
+                              runs the same analysis, prints to stdout.
 test/
   fixtures/, expected/, run_test.sh   Two libraries with a clashing `K`; checks that
                                        the plugin and CLI reports match each other and
@@ -127,7 +130,7 @@ that the native plugin command and the external CLI report the identical
 clash (`K -> MyDev.PartB.K (shadows MyDev.PartA.K)`) and identical resolved
 used-identifiers, matching a checked-in expected report.
 
-## Known limitations (v1)
+## Known limitations
 
 - **Capture starts at plugin load time.** The native command only sees
   identifiers used *after* `Require Import Loader.`, so that must be the
@@ -156,3 +159,15 @@ used-identifiers, matching a checked-in expected report.
   say so, not silently report a clean bill of health), a `Require`-without-
   `Import`ed library's definitions correctly absent from candidates, and a
   clash against the standard library.
+- `ImportAnalysis` (designed, not yet built): a different question from
+  `NamespaceAnalysis` — "of everything an imported domain exports, which
+  pieces does this file actually depend on," so you can tell whether a
+  symbol you're importing (and thus exposed to clashing on) is even needed.
+  Built on `Assumptions.traverse` (the machinery behind `Print Assumptions`)
+  rather than syntactic occurrence tracking, specifically so it doesn't miss
+  dependencies injected by proof automation (`auto`, typeclass resolution,
+  canonical structures) that never appear as literally-written identifiers.
+- Notation clashes: feasible in principle (`Notation.locate_notation` is
+  structurally close to `Nametab.locate_all`) but a genuinely separate
+  follow-up — notations are keyed differently and have no `Print
+  Namespace`-equivalent enumeration entry point.

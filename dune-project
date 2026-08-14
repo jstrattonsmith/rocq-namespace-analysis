@@ -2,7 +2,7 @@
 (using rocq 0.13)
 
 (package
- (name rocq-import-analysis)
+ (name rocq-namespace-analysis)
  (synopsis "Reports where imported identifiers are defined and flags name clashes across Require/Import")
  (depends
   (rocq-runtime (>= 9.0))

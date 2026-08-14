@@ -1,5 +1,5 @@
 {
-  description = "ImportAnalysis: Rocq import/clash analyzer";
+  description = "NamespaceAnalysis: Rocq import/clash analyzer";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

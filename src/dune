@@ -1,6 +1,6 @@
 (library
- (name import_analysis_lib)
- (public_name rocq-import-analysis.lib)
+ (name namespace_analysis_lib)
+ (public_name rocq-namespace-analysis.lib)
  (wrapped false)
  (modules domain_scan clash_detect glob_capture report)
  (flags
@@ -8,12 +8,12 @@
  (libraries rocq-runtime.vernac))
 
 (library
- (name import_analysis_plugin)
- (public_name rocq-import-analysis.plugin)
- (modules g_import_analysis)
+ (name namespace_analysis_plugin)
+ (public_name rocq-namespace-analysis.plugin)
+ (modules g_namespace_analysis)
  (flags
   (:standard -rectypes -w -27))
- (libraries rocq-runtime.vernac import_analysis_lib))
+ (libraries rocq-runtime.vernac namespace_analysis_lib))
 
 (rocq.pp
- (modules g_import_analysis))
+ (modules g_namespace_analysis))

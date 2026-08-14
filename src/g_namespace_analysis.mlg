@@ -1,4 +1,4 @@
-DECLARE PLUGIN "rocq-import-analysis.plugin"
+DECLARE PLUGIN "rocq-namespace-analysis.plugin"
 
 {
 
@@ -12,10 +12,10 @@ let qualid_to_dirpath q =
   let (dp, id) = Libnames.repr_qualid q in
   Libnames.add_dirpath_suffix dp id
 
-let run_import_analysis domains =
+let run_namespace_analysis domains =
   let domains = List.map qualid_to_dirpath domains in
   if domains = [] then
-    CErrors.user_err (str "ImportAnalysis requires at least one domain, e.g. ImportAnalysis MyDev.PartA.")
+    CErrors.user_err (str "NamespaceAnalysis requires at least one domain, e.g. NamespaceAnalysis MyDev.PartA.")
   else begin
     let members = Domain_scan.members_of_domains domains in
     let clashes = Clash_detect.find_clashes members in
@@ -26,12 +26,12 @@ let run_import_analysis domains =
 
 }
 
-VERNAC COMMAND EXTEND ImportAnalysisHello CLASSIFIED AS QUERY
-| [ "ImportAnalysis" "Hello" ] ->
-  { Feedback.msg_notice (Pp.str "ImportAnalysis plugin loaded.") }
+VERNAC COMMAND EXTEND NamespaceAnalysisHello CLASSIFIED AS QUERY
+| [ "NamespaceAnalysis" "Hello" ] ->
+  { Feedback.msg_notice (Pp.str "NamespaceAnalysis plugin loaded.") }
 END
 
-VERNAC COMMAND EXTEND ImportAnalysisRun CLASSIFIED AS QUERY
-| [ "ImportAnalysis" ne_reference_list(domains) ] ->
-  { run_import_analysis domains }
+VERNAC COMMAND EXTEND NamespaceAnalysisRun CLASSIFIED AS QUERY
+| [ "NamespaceAnalysis" ne_reference_list(domains) ] ->
+  { run_namespace_analysis domains }
 END

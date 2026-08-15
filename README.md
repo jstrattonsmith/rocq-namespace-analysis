@@ -283,6 +283,22 @@ disappearing/reappearing correctly with `--include`.
 - **Domain arguments are library/module prefixes only** (e.g. `MyDev.PartA`),
   matching `Print Namespace`'s argument style. File-path domains are a
   planned extension, not yet built.
+- **`Local` definitions can produce a false-positive clash, confirmed by
+  direct testing.** `Local` (outside a section) only blocks a definition's
+  *short-name* binding on `Import` — it's still fully-qualified-accessible
+  from anywhere (`Check LocalTest.Priv.helper.` resolves fine from another
+  file), and it still shows up as a domain "member" (`Environ.fold_constants`
+  walks the kernel's constant table, which must retain it if any public
+  lemma's proof term depends on it). `Clash_detect`'s candidate set unions
+  "what's really visible" with "what the probed domain contains" — the
+  second half doesn't know about `Local` — so probing a domain that has a
+  `Local helper` alongside another library's real, non-`Local` `helper`
+  reports a clash, even though Rocq itself would *never* actually resolve
+  the short name `helper` to the `Local` one (confirmed: `Check helper.`
+  unambiguously picked the real one). Sections themselves are fine — a
+  `Variable` never becomes its own symbol, it's abstracted into an extra
+  argument on whatever's defined inside the section, indistinguishable from
+  an ordinary top-level definition once the section closes.
 - **Open design question, not yet resolved**: when an excluded prefix (e.g.
   `Corelib`) happens to be the *actual current winner* of a clash, the clash
   is still reported (with only non-excluded alternatives shown) but with no
@@ -297,6 +313,11 @@ disappearing/reappearing correctly with `--include`.
 - `--strict` CI exit-code mode.
 - A domain argument matching nothing should say so explicitly, distinct from
   a clean bill of health.
+- Filter (or at least visibly label) `Local` definitions in the clash
+  candidate set — see "Known limitations" above. A `Local` member could
+  still be worth surfacing (e.g. it becomes a real problem if someone later
+  removes the `Local`), so labeling rather than silently dropping might be
+  the better default; needs a decision, not just an implementation.
 - `ImportAnalysis` (designed, not yet built): a different question from
   `NamespaceAnalysis` — "of everything an imported domain exports, which
   pieces does this file actually depend on," so you can tell whether a

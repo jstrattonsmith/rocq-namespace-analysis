@@ -267,8 +267,31 @@ checked-in golden report); a 4-level-deep domain caught by probing a
 2-level-shallow prefix; 0/1/2/3 `--domain` arguments against three
 same-named libraries; a domain named only as an argument, never actually
 `Require`d, correctly surfacing as a would-be clash while proving no
-short-name pollution occurred; and the default `Corelib` exclusion
-disappearing/reappearing correctly with `--include`.
+short-name pollution occurred; the default `Corelib` exclusion
+disappearing/reappearing correctly with `--include`; a clash buried in the
+*second* type of a two-type mutual inductive block; and a clash between two
+libraries' same-named constructors on otherwise differently-named types.
+
+## Documentation
+
+OCaml source (`src/*.mli`) is documented with ordinary
+[odoc](https://ocaml.github.io/odoc/)/ocamldoc-style `(** ... *)` comments
+ahead of each `val`, which is the default documentation mechanism for OCaml
+libraries. Build the HTML docs with:
+
+```sh
+dune build @doc
+```
+
+Output lands in `_build/default/_doc/_html/rocq-namespace-analysis/`; open
+`index.html` from there. `odoc` is included in the Nix dev shell
+(`flake.nix`); with Homebrew, `opam install odoc` instead.
+
+The `.v` theory files (currently just `theories/Loader.v`, which has no
+public API worth documenting yet) would use Rocq's equivalent, `rocq doc`
+(the modern name for `coqdoc`), the same tool that backs the
+cross-referencing `Glob_capture` itself hijacks -- see "Shadows real `.glob`
+output" below.
 
 ## Known limitations
 
@@ -336,3 +359,7 @@ disappearing/reappearing correctly with `--include`.
   `Require`-bypass not durably persisting loaded-library bookkeeping across
   vernacular commands) — either report upstream or find the real fix rather
   than routing around them.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

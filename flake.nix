@@ -23,6 +23,7 @@
             ocamlPackages.ocaml
             ocamlPackages.findlib
             ocamlPackages.zarith
+            ocamlPackages.odoc
           ];
 
           # Once `dune build` has run, this project's own plugin/CLI output

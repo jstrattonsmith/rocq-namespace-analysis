@@ -33,7 +33,8 @@ split_blocks() {
 }
 
 echo "==> compiling fixture libraries"
-mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl"
+mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
+  "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb"
 cp test/fixtures/libs/PartA.v test/fixtures/libs/PartB.v test/fixtures/libs/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
@@ -41,6 +42,10 @@ cp test/fixtures/libs/three/one/Mod.v "$WORK/one/"
 cp test/fixtures/libs/three/two/Mod.v "$WORK/two/"
 cp test/fixtures/libs/three/three/Mod.v "$WORK/three/"
 cp test/fixtures/libs/excldemo/CorelibClash.v "$WORK/excl/"
+cp test/fixtures/libs/mutual/a/MutA.v "$WORK/muta/"
+cp test/fixtures/libs/mutual/b/MutB.v "$WORK/mutb/"
+cp test/fixtures/libs/construct/a/ConstructA.v "$WORK/consa/"
+cp test/fixtures/libs/construct/b/ConstructB.v "$WORK/consb/"
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartC.v" >/dev/null
@@ -50,6 +55,10 @@ rocq compile -R "$WORK/one" LibOne "$WORK/one/Mod.v" >/dev/null
 rocq compile -R "$WORK/two" LibTwo "$WORK/two/Mod.v" >/dev/null
 rocq compile -R "$WORK/three" LibThree "$WORK/three/Mod.v" >/dev/null
 rocq compile -R "$WORK/excl" ExcludeDemo "$WORK/excl/CorelibClash.v" >/dev/null
+rocq compile -R "$WORK/muta" MutLibA "$WORK/muta/MutA.v" >/dev/null
+rocq compile -R "$WORK/mutb" MutLibB "$WORK/mutb/MutB.v" >/dev/null
+rocq compile -R "$WORK/consa" ConstructLibA "$WORK/consa/ConstructA.v" >/dev/null
+rocq compile -R "$WORK/consb" ConstructLibB "$WORK/consb/ConstructB.v" >/dev/null
 
 # ---------------------------------------------------------------------------
 echo "==> base fixture: native plugin command (Main.v)"
@@ -154,5 +163,39 @@ echo "==> exclude/include, CLI parity"
   test/fixtures/ExcludeIncludeCli.v > "$WORK/ei_cli_included"
 grep -q "No clashes found." "$WORK/ei_cli_default"
 grep -q "ExcludeDemo.CorelibClash.double <- used" "$WORK/ei_cli_included"
+
+# ---------------------------------------------------------------------------
+echo "==> mutual-inductive clash (MutualInductive.v): second type in a mutual block is scanned"
+rocq compile $THEORIES -R "$WORK/muta" MutLibA -R "$WORK/mutb" MutLibB \
+  test/fixtures/MutualInductive.v > "$WORK/mut_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/mut_out.txt" > "$WORK/mut_plugin.txt"
+# SharedName is the *second* inductive in each library's two-type mutual
+# block (`FirstA`/`FirstB` come first) -- before the fix, `members_of_domains`
+# hardcoded index 0 and never saw it from either library, so this clash was
+# silently missed entirely (the name never even entered the candidate set).
+grep -q "MutLibA.MutA.SharedName" "$WORK/mut_plugin.txt"
+grep -q "MutLibB.MutB.SharedName <- used" "$WORK/mut_plugin.txt"
+
+echo "==> mutual-inductive clash, CLI parity"
+"$CLI" -R "$WORK/muta" MutLibA -R "$WORK/mutb" MutLibB --domain MutLibA --domain MutLibB \
+  test/fixtures/MutualInductiveCli.v > "$WORK/mut_cli.txt"
+diff -u "$WORK/mut_plugin.txt" "$WORK/mut_cli.txt"
+
+# ---------------------------------------------------------------------------
+echo "==> constructor clash (ConstructorClash.v): same-named constructors across libraries are scanned"
+rocq compile $THEORIES -R "$WORK/consa" ConstructLibA -R "$WORK/consb" ConstructLibB \
+  test/fixtures/ConstructorClash.v > "$WORK/cons_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/cons_out.txt" > "$WORK/cons_plugin.txt"
+# `Node` is a constructor of each library's differently-named inductive type
+# (`TreeA`/`TreeB`), so this only clashes at the constructor level -- before
+# the fix, constructors were never enumerated as domain members at all, so
+# this "last import wins" hazard was invisible.
+grep -q "ConstructLibA.ConstructA.Node" "$WORK/cons_plugin.txt"
+grep -q "ConstructLibB.ConstructB.Node <- used" "$WORK/cons_plugin.txt"
+
+echo "==> constructor clash, CLI parity"
+"$CLI" -R "$WORK/consa" ConstructLibA -R "$WORK/consb" ConstructLibB --domain ConstructLibA --domain ConstructLibB \
+  test/fixtures/ConstructorClashCli.v > "$WORK/cons_cli.txt"
+diff -u "$WORK/cons_plugin.txt" "$WORK/cons_cli.txt"
 
 echo "ALL TESTS PASSED"

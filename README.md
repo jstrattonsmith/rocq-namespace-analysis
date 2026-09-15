@@ -262,6 +262,10 @@ hand-rolled shell + `rocq compile`/CLI invocations, not `dune runtest` —
 sandboxed dune rules proved fragile for a project that needs a real Rocq
 session and its own plugin loaded via `OCAMLPATH`.
 
+CI (`.github/workflows/test.yml`) runs the same script — `nix develop -c
+bash test/run_test.sh` — on push/PR to `main`, Nix path only (see "Building"
+above for why the Homebrew path isn't also CI'd).
+
 Covers: the original two-library `K` clash (plugin/CLI parity against a
 checked-in golden report); a 4-level-deep domain caught by probing a
 2-level-shallow prefix; 0/1/2/3 `--domain` arguments against three

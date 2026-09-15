@@ -272,6 +272,12 @@ disappearing/reappearing correctly with `--include`; a clash buried in the
 *second* type of a two-type mutual inductive block; and a clash between two
 libraries' same-named constructors on otherwise differently-named types.
 
+`test/run_error_test.sh`, invoked automatically at the end of the above,
+covers the CLI's error paths: no target file, an `-R` pointing at a
+nonexistent directory, a target file that fails to compile, and a malformed
+`--domain` string — each expected to fail with a clean, one-line message and
+exit code 1, the same as `rocq compile` gives on identical input.
+
 ## Documentation
 
 OCaml source (`src/*.mli`) is documented with ordinary

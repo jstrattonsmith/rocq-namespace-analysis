@@ -1,0 +1,1 @@
+Definition bad : nat := true.

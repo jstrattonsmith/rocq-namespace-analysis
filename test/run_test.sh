@@ -198,4 +198,8 @@ echo "==> constructor clash, CLI parity"
   test/fixtures/ConstructorClashCli.v > "$WORK/cons_cli.txt"
 diff -u "$WORK/cons_plugin.txt" "$WORK/cons_cli.txt"
 
+# ---------------------------------------------------------------------------
+echo "==> error-path tests"
+bash "$ROOT/test/run_error_test.sh"
+
 echo "ALL TESTS PASSED"

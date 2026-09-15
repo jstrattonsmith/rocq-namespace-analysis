@@ -172,3 +172,50 @@ Per-module pages exist for every documented module, e.g.
 `_build/default/_doc/_html/rocq-namespace-analysis/Domain_scan/index.html`
 now documents the updated `members_of_domains` behavior (mutual-inductive +
 constructor scanning) straight from the `.mli` comment.
+
+## 4. Clean CLI error messages (Workstream 4)
+
+**Bug fixed**: the CLI had no top-level exception handler, so anything past
+argument parsing escaped as a raw, uncaught OCaml exception dump with exit
+code 2, instead of a clean one-line message with exit code 1 the way
+`rocq compile` itself handles the same bad input.
+
+**Before** (confirmed by reverting the fix):
+```
+$ namespace-analysis -R /no/such/dir SomeDirPath MyFile.v
+Fatal error: exception Synterp.UnmappedLibrary(_, _)
+$ echo $?
+2
+```
+
+**After:**
+```
+$ namespace-analysis -R /no/such/dir SomeDirPath MyFile.v
+File "MyFile.v", line 1, characters 26-31:
+Error: Cannot find a physical path bound to logical path
+PartA with prefix MyDev.
+$ echo $?
+1
+```
+
+Same clean behavior now for a `.v` file that fails to compile:
+```
+$ namespace-analysis test/fixtures/BadCompile.v
+File "test/fixtures/BadCompile.v", line 1, characters 24-28:
+Error:
+The term "true" has type "bool" while it is expected to have type "nat".
+$ echo $?
+1
+```
+
+...and for a malformed `--domain` string:
+```
+$ namespace-analysis -R /tmp/mydev MyDev --domain "not a valid ident!!" MyFile.v
+Error: Invalid character ' ' in identifier "not a valid ident!!".
+$ echo $?
+1
+```
+
+See `test/run_error_test.sh` for all four error-path cases (including the
+already-clean "no target file" case), run automatically at the end of
+`test/run_test.sh`.

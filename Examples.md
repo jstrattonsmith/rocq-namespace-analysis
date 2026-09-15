@@ -219,3 +219,62 @@ $ echo $?
 See `test/run_error_test.sh` for all four error-path cases (including the
 already-clean "no target file" case), run automatically at the end of
 `test/run_test.sh`.
+
+## 5. Pinning the "excluded winner" edge case (Workstream 5)
+
+**What this pins**: README's "Known limitations" flags an open design
+question -- if the symbol that's *actually* currently resolved for a short
+name falls under an excluded prefix (`Corelib` by default), the clash is
+still reported, but with no winner singled out (rather than either hiding
+the clash entirely or revealing an excluded winner anyway). No fixture
+exercised this before; this doesn't resolve the design question, just stops
+it from being an untested code path.
+
+**Fixture libraries** (`test/fixtures/libs/exclwinner/{a,b}/`), both defined
+but deliberately never `Import`ed -- only ever named as probe-domain
+arguments (`Require`-only, like the existing `Hypothetical.v` pattern):
+
+`ExclWinA.v`: `Definition double (n : nat) := n + n.`
+`ExclWinB.v`: `Definition double (n : nat) := n * 2.`
+
+**Fixture file** (`test/fixtures/ExcludedWinner.v`) does `Import Nat.` --
+making `Corelib.Init.Nat.double` the actual, currently-resolving `double`
+right now -- then probes the two never-imported libraries above:
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+Import Nat.
+
+Check double.
+
+NamespaceAnalysis ExclWinLibA.ExclWinA ExclWinLibB.ExclWinB.
+```
+
+**Actual output:**
+```
+NamespaceAnalysis: 2 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬─────────────────────────────┐
+│ Short name │ Candidates (alphabetical)   │
+├────────────┼─────────────────────────────┤
+│ double     │ ExclWinLibA.ExclWinA.double │
+│            │ ExclWinLibB.ExclWinB.double │
+└────────────┴─────────────────────────────┘
+Used identifiers:
+┌────────────┬──────────────────┐
+│ Identifier │ Defined in       │
+├────────────┼──────────────────┤
+│ double     │ Corelib.Init.Nat │
+└────────────┴──────────────────┘
+```
+
+The clash is reported (2 non-excluded alternatives, neither ever `Import`ed
+in this file) with **no** `<- used` marker on either row -- even though
+"Used identifiers" independently proves `double` really does resolve, right
+now, to `Corelib.Init.Nat.double`. That gap between "what's really visible"
+and "what the report can call a winner" is exactly the pinned behavior.
+
+Confirmed load-bearing: temporarily removing the excluded-prefix check on
+`winner` in `src/clash_detect.ml` (so an excluded symbol could be reported
+as the winner) makes this test section fail with `FAIL: excluded-winner
+clash unexpectedly marked a winner`; reverted immediately after confirming.

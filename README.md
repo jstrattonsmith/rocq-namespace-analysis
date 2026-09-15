@@ -269,8 +269,11 @@ same-named libraries; a domain named only as an argument, never actually
 `Require`d, correctly surfacing as a would-be clash while proving no
 short-name pollution occurred; the default `Corelib` exclusion
 disappearing/reappearing correctly with `--include`; a clash buried in the
-*second* type of a two-type mutual inductive block; and a clash between two
-libraries' same-named constructors on otherwise differently-named types.
+*second* type of a two-type mutual inductive block; a clash between two
+libraries' same-named constructors on otherwise differently-named types; and
+the "excluded winner" edge case below, pinning that a clash whose actual
+current winner falls under an excluded prefix is still reported, with no
+winner marked, rather than either hidden entirely or shown anyway.
 
 `test/run_error_test.sh`, invoked automatically at the end of the above,
 covers the CLI's error paths: no target file, an `-R` pointing at a
@@ -332,7 +335,8 @@ output" below.
   `Corelib`) happens to be the *actual current winner* of a clash, the clash
   is still reported (with only non-excluded alternatives shown) but with no
   winner singled out, rather than either hiding the whole clash or revealing
-  an excluded winner anyway. Flagged for revisit.
+  an excluded winner anyway. Flagged for revisit. Pinned as a regression
+  (not resolved) by `ExcludedWinner.v` in the test suite — see `Examples.md`.
 - The CLI always exits `0`; a `--strict` flag for CI gating (nonzero exit on
   any clash) isn't built yet.
 

@@ -34,7 +34,7 @@ split_blocks() {
 
 echo "==> compiling fixture libraries"
 mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
-  "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb"
+  "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb"
 cp test/fixtures/libs/PartA.v test/fixtures/libs/PartB.v test/fixtures/libs/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
@@ -46,6 +46,8 @@ cp test/fixtures/libs/mutual/a/MutA.v "$WORK/muta/"
 cp test/fixtures/libs/mutual/b/MutB.v "$WORK/mutb/"
 cp test/fixtures/libs/construct/a/ConstructA.v "$WORK/consa/"
 cp test/fixtures/libs/construct/b/ConstructB.v "$WORK/consb/"
+cp test/fixtures/libs/exclwinner/a/ExclWinA.v "$WORK/exclwina/"
+cp test/fixtures/libs/exclwinner/b/ExclWinB.v "$WORK/exclwinb/"
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartC.v" >/dev/null
@@ -59,6 +61,8 @@ rocq compile -R "$WORK/muta" MutLibA "$WORK/muta/MutA.v" >/dev/null
 rocq compile -R "$WORK/mutb" MutLibB "$WORK/mutb/MutB.v" >/dev/null
 rocq compile -R "$WORK/consa" ConstructLibA "$WORK/consa/ConstructA.v" >/dev/null
 rocq compile -R "$WORK/consb" ConstructLibB "$WORK/consb/ConstructB.v" >/dev/null
+rocq compile -R "$WORK/exclwina" ExclWinLibA "$WORK/exclwina/ExclWinA.v" >/dev/null
+rocq compile -R "$WORK/exclwinb" ExclWinLibB "$WORK/exclwinb/ExclWinB.v" >/dev/null
 
 # ---------------------------------------------------------------------------
 echo "==> base fixture: native plugin command (Main.v)"
@@ -197,6 +201,33 @@ echo "==> constructor clash, CLI parity"
 "$CLI" -R "$WORK/consa" ConstructLibA -R "$WORK/consb" ConstructLibB --domain ConstructLibA --domain ConstructLibB \
   test/fixtures/ConstructorClashCli.v > "$WORK/cons_cli.txt"
 diff -u "$WORK/cons_plugin.txt" "$WORK/cons_cli.txt"
+
+# ---------------------------------------------------------------------------
+echo "==> excluded winner (ExcludedWinner.v): actual winner under an excluded prefix reports no winner"
+rocq compile $THEORIES -R "$WORK/exclwina" ExclWinLibA -R "$WORK/exclwinb" ExclWinLibB \
+  test/fixtures/ExcludedWinner.v > "$WORK/ew_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/ew_out.txt" > "$WORK/ew_plugin.txt"
+# `Import Nat.` makes `double` actually resolve, right now, to the excluded
+# Corelib.Init.Nat.double -- neither ExclWinLibA nor ExclWinLibB is ever
+# Import-ed (both are Require-only "hypothetical" probe domains, like
+# Hypothetical.v), so nothing about the file's real name resolution changes.
+# The clash must still be reported (2 non-excluded alternatives), but with
+# no winner marked, since the actual winner (Corelib) is excluded --
+# "Used identifiers" independently proves the real resolution to pin the gap
+# between "what's really visible" and "what the report can call a winner".
+grep -q "ExclWinLibA.ExclWinA.double" "$WORK/ew_plugin.txt"
+grep -q "ExclWinLibB.ExclWinB.double" "$WORK/ew_plugin.txt"
+if grep -q -- "<- used" "$WORK/ew_plugin.txt"; then
+  echo "FAIL: excluded-winner clash unexpectedly marked a winner"
+  exit 1
+fi
+grep -q "double.*Corelib.Init.Nat" "$WORK/ew_plugin.txt"
+
+echo "==> excluded winner, CLI parity"
+"$CLI" -R "$WORK/exclwina" ExclWinLibA -R "$WORK/exclwinb" ExclWinLibB \
+  --domain ExclWinLibA.ExclWinA --domain ExclWinLibB.ExclWinB \
+  test/fixtures/ExcludedWinnerCli.v > "$WORK/ew_cli.txt"
+diff -u "$WORK/ew_plugin.txt" "$WORK/ew_cli.txt"
 
 # ---------------------------------------------------------------------------
 echo "==> error-path tests"

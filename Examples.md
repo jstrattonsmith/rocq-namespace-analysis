@@ -278,3 +278,23 @@ Confirmed load-bearing: temporarily removing the excluded-prefix check on
 `winner` in `src/clash_detect.ml` (so an excluded symbol could be reported
 as the winner) makes this test section fail with `FAIL: excluded-winner
 clash unexpectedly marked a winner`; reverted immediately after confirming.
+
+## 6. CI (Workstream 7)
+
+**What's new**: `.github/workflows/test.yml` runs `nix develop -c bash
+test/run_test.sh` (which already invokes `test/run_error_test.sh` at the
+end) on every push/PR to `main`, using `cachix/install-nix-action` to get
+Nix working on `ubuntu-latest`. Nix path only — see README "Building" for
+why the Homebrew path isn't also CI'd.
+
+**Confirmed actually green**, not just "should work": watched two real runs
+with `gh run watch --exit-status`.
+- [`35004564508`](https://github.com/jstrattonsmith/rocq-namespace-analysis/actions/runs/35004564508):
+  initial run, ~45s, one harmless Node.js-20-deprecation annotation from
+  `actions/checkout@v4` (GitHub forcing it onto Node 24).
+- [`35004704388`](https://github.com/jstrattonsmith/rocq-namespace-analysis/actions/runs/35004704388):
+  after bumping to `actions/checkout@v7`, ~41s, no annotations.
+
+Both runs finished in well under a minute with no packages built from
+source — nixpkgs' binary cache already had every dependency (`rocq-core`,
+`dune`, `ocaml`, `odoc`, etc.) for the pinned `flake.lock` revision.

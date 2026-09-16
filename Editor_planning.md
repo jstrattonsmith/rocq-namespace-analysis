@@ -11,16 +11,15 @@ solved for a terminal shell.
 
 Done:
 - `_CoqProject` at repo root: `-R _build/default/theories NamespaceAnalysis`.
-- `flake.nix`: a second devShell, `devShells.editor` (`nix develop
-  .#editor`), layering `rocqPackages_9_1.vsrocq-language-server` on top of
-  `devShells.default`'s packages — confirmed via `nix flake check` and
-  `nix develop .#editor -c which vsrocqtop` that it resolves, and confirmed
-  `devShells.default` stays untouched (`vsrocqtop` absent there) so CI and
-  normal dev keep the lean shell. `vsrocq-language-server` pulls in a real
-  GTK3/Cairo/Pango dependency chain (~40 extra store paths) — confirmed via
-  the actual build log — which is exactly why this is a separate opt-in
-  shell and not folded into the default one, matching the "grow the shared
-  devShell, or split it?" decision flagged below (answered: split).
+- `flake.nix`: `rocqPackages_9_1.vsrocq-language-server` is in the one
+  shared `devShells.default` — **revised from an earlier separate
+  `devShells.editor` output**: Jeremy explicitly decided the closure-size
+  argument for splitting doesn't outweigh the "which shell do I use"
+  friction for a private, single-maintainer project, especially once actual
+  troubleshooting was in progress. `vsrocq-language-server` does pull in a
+  real GTK3/Cairo/Pango dependency chain (~40 extra store paths, confirmed
+  via the build log) but it's cache-fetched, not built from source, so the
+  real cost is fetch time only.
 - `.vscode/extensions.json` (recommends `rocq-prover.vsrocq`) and
   `.vscode/settings.json` (`"vsrocq.path": "vsrocqtop"`, a bare PATH-resolved
   command, not a hardcoded store path).
@@ -28,12 +27,17 @@ Done:
   `rocq repl -R _build/default/theories NamespaceAnalysis` (the same
   process model `vsrocqtop` uses) piping in `From NamespaceAnalysis Require
   Import Loader.` + `NamespaceAnalysis Hello.`, and got the plugin-loaded
-  message back. The VS Code extension itself wasn't separately confirmed in
-  a live GUI session (no GUI available here) — that's the one remaining
-  unverified link, flagged in the README's new "Editor setup" section along
-  with VsRocq's own documented troubleshooting step (launch VS Code *from*
-  the shell, not from a double-clicked recent-projects entry) in case
-  `vsrocqtop` isn't found on first try.
+  message back.
+- **Real troubleshooting note, not just a hypothetical caveat**: Jeremy hit
+  "no Rocq available" after following the (then two-shell) instructions.
+  The most likely cause, called out in the README now: if VS Code is
+  already running, `code .` just opens a new window in the *existing*
+  process — it never inherits a shell's environment at all, regardless of
+  which shell or how many packages are in it. Full quit (Cmd+Q) before
+  `code .` is the fix. Whether that alone resolves it, or something else is
+  also wrong, hasn't been confirmed yet — the VS Code GUI session itself
+  still isn't independently verified end-to-end from here (no GUI
+  available in this environment), which remains the one unverified link.
 
 See the README's new "Editor setup" section for the actual how-to. Emacs
 and RocqIDE are still just planned (below), not wired up.

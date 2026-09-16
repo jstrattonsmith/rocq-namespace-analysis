@@ -401,19 +401,28 @@ wired up locally:
   NamespaceAnalysis` -- dune's *build output* directory, not `theories/`
   itself, since that's where `dune build` actually puts `Loader.vo`. Run
   `dune build` at least once before opening an editor.
-- **`nix develop .#editor`** is a second, heavier devShell (on top of the
-  normal `nix develop`) adding `vsrocq-language-server` (confirmed: pulls
-  in a real GTK3/Cairo/Pango chain, which is exactly why it's a separate
-  shell and not folded into `devShells.default` — CI and the CLI/test-suite
-  path never need it).
+- **`nix develop`** already includes `vsrocq-language-server` (folded into
+  the one shared devShell rather than split into a separate `.#editor`
+  output -- this is a private, single-maintainer project, so the closure
+  size this adds to every CLI/test session isn't worth the extra "which
+  shell do I use" friction; confirmed it only adds fetch time, not build
+  time, since nixpkgs' binary cache already has it and its GTK3/Cairo/Pango
+  dependencies prebuilt).
 
 **VS Code**: install the recommended extension (`.vscode/extensions.json`
-points at `rocq-prover.vsrocq`), then launch VS Code *from inside* the
-editor shell so it inherits `PATH`/`OCAMLPATH`:
+points at `rocq-prover.vsrocq`), then launch VS Code *from inside* the dev
+shell so it inherits `PATH`/`OCAMLPATH`:
 ```sh
-nix develop .#editor
+nix develop
 code .
 ```
+**If VS Code was already running, fully quit it first (Cmd+Q, not just
+closing the window/tab) before running `code .`** — otherwise that command
+just tells the already-running instance to open a new window, which never
+inherits the shell's environment at all. This is the most common cause of
+VsRocq reporting no Rocq/`vsrocqtop` available even after doing everything
+else right.
+
 `.vscode/settings.json` sets `"vsrocq.path": "vsrocqtop"` (a bare command,
 resolved via `PATH` — not a hardcoded `/nix/store/...` path, which would go
 stale on the next `nix flake update`). Confirmed the underlying mechanism
@@ -421,10 +430,9 @@ works end-to-end by driving `rocq repl` the same way `vsrocqtop` would
 (`rocq repl -R _build/default/theories NamespaceAnalysis`, loading the
 plugin and running `NamespaceAnalysis Hello.` successfully) — the actual
 VS Code extension itself wasn't separately verified in a GUI session, so if
-`vsrocqtop` isn't found, launching VS Code from the shell (not double-clicking
-a recent-projects entry, which bypasses the shell entirely) is the first
-thing to check; VsRocq's own FAQ notes this is "usually a PATH issue" and
-suggests a hardcoded full path as the fallback if so.
+`vsrocqtop` still isn't found after a full VS Code restart, VsRocq's own
+FAQ notes this is "usually a PATH issue" and suggests a hardcoded full path
+in `vsrocq.path` as the fallback.
 
 **Emacs (Proof General) and RocqIDE**: not wired up yet — see
 `Editor_planning.md` for what's already confirmed (Proof General reads

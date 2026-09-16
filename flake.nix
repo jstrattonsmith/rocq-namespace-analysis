@@ -33,26 +33,19 @@
           ocamlPackages.findlib
           ocamlPackages.zarith
           ocamlPackages.odoc
+          # Editor tooling (VsRocq's language server) folded into the one
+          # shared shell rather than split into a separate `.#editor`
+          # output -- this is a private, single-maintainer project, not a
+          # shared team repo where closure-size discipline for occasional
+          # CLI/test sessions is worth the extra "which shell do I use"
+          # friction. Confirmed via the nixpkgs binary cache that this adds
+          # fetch time, not build time (no from-source builds triggered).
+          pkgs.rocqPackages_9_1.vsrocq-language-server
         ];
       in
       {
         devShells.default = pkgs.mkShell {
           packages = corePackages;
-          shellHook = ocamlpathHook;
-        };
-
-        # `nix develop .#editor` -- everything in devShells.default, plus
-        # editor/language-server tooling for live/interactive testing (see
-        # Editor_planning.md). Kept separate from devShells.default so the
-        # CLI/test-suite path (and CI, which only ever needs the default
-        # shell) doesn't pull in a heavier closure for tooling most sessions
-        # never touch. To demo in VS Code: `nix develop .#editor`, then
-        # `code .` from inside that shell so it inherits OCAMLPATH/PATH
-        # (VS Code's own direnv integration is a fine alternative once
-        # .envrc is pointed at this shell instead of the default one, but
-        # isn't required).
-        devShells.editor = pkgs.mkShell {
-          packages = corePackages ++ [ pkgs.rocqPackages_9_1.vsrocq-language-server ];
           shellHook = ocamlpathHook;
         };
       }

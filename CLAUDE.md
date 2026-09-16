@@ -44,11 +44,12 @@ broken.
 Adding a new `.ml`/`.mli` module under `src/` requires listing it explicitly in `src/dune`'s
 `(modules ...)` stanza — it's not picked up automatically.
 
-Live/interactive editing in VS Code (VsRocq): `nix develop .#editor` (a second, heavier devShell —
-see README "Editor setup") then `code .` from inside it, not `nix develop` (the default shell
-deliberately excludes `vsrocq-language-server`, which pulls in a real GTK3 dependency chain that
-CI and the CLI/test path never need). `_CoqProject` at the repo root is for this and other editor
-front-ends only — `dune build` doesn't read it, it's separate from the real build.
+Live/interactive editing in VS Code (VsRocq): `nix develop` already includes
+`vsrocq-language-server` — launch `code .` *from inside* that shell (if VS Code is already
+running, fully quit it first; otherwise `code .` just opens a new window in the existing process,
+which never inherits the shell's `PATH`/`OCAMLPATH`). See README "Editor setup". `_CoqProject` at
+the repo root is for this and other editor front-ends only — `dune build` doesn't read it, it's
+separate from the real build.
 
 ## Architecture
 

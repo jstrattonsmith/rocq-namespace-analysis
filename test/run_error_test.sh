@@ -31,7 +31,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$WORK/mydev"
-cp test/fixtures/libs/PartA.v test/fixtures/libs/PartB.v "$WORK/mydev/"
+cp test/fixtures/libs/mydev/PartA.v test/fixtures/libs/mydev/PartB.v "$WORK/mydev/"
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 

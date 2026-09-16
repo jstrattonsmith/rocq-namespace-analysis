@@ -45,13 +45,21 @@ Done:
   compiles them *in place* instead (persistent), with matching `-R` entries
   added to `_CoqProject`. Verified end-to-end by driving `rocq repl` with
   every `_CoqProject` `-R` flag against `test/fixtures/Main.v` directly and
-  getting the real clash grid back. One cosmetic wrinkle found and
-  documented (not fixed): `-R test/fixtures/libs MyDev` is recursive and
-  overlaps with several other fixture families' own subdirectories,
-  producing harmless `overriding-logical-loadpath` warnings — see README
-  "Trying it on the checked-in fixtures" for why this wasn't restructured
-  away (would touch several already-tested `run_test.sh` paths for a purely
-  cosmetic gain).
+  getting the real clash grid back.
+- **Follow-up, not just cosmetic after all**: the initial layout had
+  `PartA.v`/`PartB.v`/`PartC.v` sitting directly in `test/fixtures/libs/`,
+  so `-R test/fixtures/libs MyDev`'s recursion overlapped with every other
+  fixture family's own subdirectory underneath it. Dismissed at first as a
+  `rocq repl`-confirmed-harmless warning (the more specific, later `-R`
+  entry does correctly override, just noisily) — but Jeremy hit a *real*
+  failure opening `ExcludeInclude.v` in VS Code: "Cannot find a physical
+  path bound to logical path CorelibClash with prefix ExcludeDemo," even
+  with the identical config confirmed working via `rocq repl` directly.
+  That isolated it to VsRocq specifically not applying the override the
+  same way the standard arg parser does. Fixed by actually restructuring
+  `PartA/B/C` into their own `test/fixtures/libs/mydev/` subdirectory,
+  eliminating the overlap entirely rather than relying on two tools
+  agreeing on override semantics for ambiguous overlapping `-R` entries.
 
 See the README's new "Editor setup" section for the actual how-to. Emacs
 and RocqIDE are still just planned (below), not wired up.

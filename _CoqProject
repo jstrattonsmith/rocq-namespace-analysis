@@ -15,7 +15,7 @@
 # same sources into its own ephemeral temp dir instead, to keep the repo
 # clean during CI -- these exist purely so the fixtures can be opened
 # directly in an editor.
--R test/fixtures/libs MyDev
+-R test/fixtures/libs/mydev MyDev
 -R test/fixtures/libs/multilevel/deep Demo.Sub.Deep
 -R test/fixtures/libs/multilevel/other Demo.Other
 -R test/fixtures/libs/three/one LibOne

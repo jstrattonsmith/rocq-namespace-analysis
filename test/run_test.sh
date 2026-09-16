@@ -35,7 +35,7 @@ split_blocks() {
 echo "==> compiling fixture libraries"
 mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
   "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb"
-cp test/fixtures/libs/PartA.v test/fixtures/libs/PartB.v test/fixtures/libs/PartC.v "$WORK/mydev/"
+cp test/fixtures/libs/mydev/PartA.v test/fixtures/libs/mydev/PartB.v test/fixtures/libs/mydev/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
 cp test/fixtures/libs/three/one/Mod.v "$WORK/one/"

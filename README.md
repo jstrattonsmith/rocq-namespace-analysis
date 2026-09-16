@@ -116,13 +116,13 @@ Fully-annotated example:
 
 ```sh
 namespace-analysis \
-  -R test/fixtures/libs MyDev \
+  -R test/fixtures/libs/mydev MyDev \
   --domain MyDev.PartA --domain MyDev.PartB \
   --include Corelib \
   test/fixtures/MainCli.v
-# ^^^^^^^^^^^^^^^^^^^^^^^  standard Rocq flag: map physical dir to logical prefix MyDev
-#                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  our flags: which domains to probe, and un-hide Corelib
-#                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ target file (positional)
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  standard Rocq flag: map physical dir to logical prefix MyDev
+#                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  our flags: which domains to probe, and un-hide Corelib
+#                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ target file (positional)
 ```
 
 ### Checking a domain you haven't imported yet
@@ -458,19 +458,21 @@ entries for all of them. Confirmed end-to-end by driving `rocq repl` with
 every `-R` flag from `_CoqProject`, piping in `test/fixtures/Main.v`, and
 getting the real clash-detection grid back.
 
-One known cosmetic wrinkle from doing this: `-R test/fixtures/libs MyDev`
-is recursive, and several unrelated fixture families
-(`multilevel/`, `three/`, `mutual/`, `construct/`, `excldemo/`,
-`exclwinner/`) happen to live as subdirectories of that same
-`test/fixtures/libs/` — so opening `Main.v` prints a handful of harmless
-`overriding-logical-loadpath` warnings as those subdirectories' own
-`-R` entries (listed after `MyDev`'s in `_CoqProject`) correctly take
-precedence. Doesn't affect correctness (confirmed: the clash-detection
-output is exactly right regardless), just noise; the real fix would be
-moving `PartA.v`/`PartB.v`/`PartC.v` into their own subdirectory to match
-every other fixture family's layout, which hasn't been done since it'd
-touch several already-tested paths in `test/run_test.sh` for a purely
-cosmetic gain.
+`PartA.v`/`PartB.v`/`PartC.v` live in their own `test/fixtures/libs/mydev/`
+subdirectory, matching every other fixture family's layout — this used to
+not be the case (they sat directly in `test/fixtures/libs/`), which meant
+`-R test/fixtures/libs MyDev`'s recursion overlapped with every other
+fixture family's own subdirectory underneath it. That was initially
+dismissed as cosmetic (`rocq repl` correctly applies the more specific,
+later `-R` override, just with a harmless warning) — but it turned out to
+be a *real* problem for VsRocq specifically: opening `ExcludeInclude.v`
+failed with "Cannot find a physical path bound to logical path
+CorelibClash with prefix ExcludeDemo" even with everything else set up
+correctly (confirmed via `rocq repl` reproducing the identical config
+successfully, isolating the discrepancy to VsRocq's own handling of
+overlapping `_CoqProject` entries). Restructuring away the overlap
+entirely fixed it outright rather than relying on override semantics
+matching between two different tools.
 
 **Emacs (Proof General) and RocqIDE**: not wired up yet — see
 `Editor_planning.md` for what's already confirmed (Proof General reads

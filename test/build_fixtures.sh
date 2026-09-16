@@ -26,7 +26,7 @@ compile() {
   done
 }
 
-compile test/fixtures/libs MyDev PartA.v PartB.v PartC.v
+compile test/fixtures/libs/mydev MyDev PartA.v PartB.v PartC.v
 compile test/fixtures/libs/multilevel/deep Demo.Sub.Deep DeepOne.v
 compile test/fixtures/libs/multilevel/other Demo.Other Sibling.v
 compile test/fixtures/libs/three/one LibOne Mod.v

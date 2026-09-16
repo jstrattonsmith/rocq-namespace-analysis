@@ -98,7 +98,9 @@ name).
 | Domains | `--domain <dirpath>` (repeatable) | bare space-separated list, e.g. `NamespaceAnalysis MyDev.PartA MyDev.PartB.` | Which library/module prefixes to scan. **0** domains = everything currently imported (`Library.loaded_libraries`, including the auto-loaded `Corelib` prelude). **1** domain = just that prefix (and anything nested under it). **N** domains = the union — and this list only controls what gets *probed*; a clash is still reported even against a candidate from an unnamed library (see "Clash scope" below). A domain that isn't `Require`d yet is auto-loaded on the spot (see "Checking a domain you haven't imported yet"). |
 | Exclude | `--exclude <dirpath>` (repeatable) | `: Excluding <dirpath>...` clause | Hide candidates under this prefix from the report. `Corelib` is excluded by default. |
 | Include | `--include <dirpath>` (repeatable) | `: Including <dirpath>...` clause | Un-hide a prefix — overrides both the `Corelib` default and any `--exclude`. |
-| Target file | positional, must not start with `-` | *(implicit — the file you're compiling)* | The `.v` file to analyze. CLI-only argument; the native command always analyzes the file it's running in. |
+| Target file(s) | positional (repeatable), must not start with `-` | *(implicit — the file you're compiling)* | The `.v` file(s) to analyze — all get loaded into one Rocq session, then analyzed together as a single report. CLI-only; the native command always analyzes the file it's running in. |
+| Directory | `--dir <path>` (repeatable, CLI-only) | *(n/a)* | Recursively add every `*.v` under `path` (sorted per directory for determinism), appended after any explicit target files. See "Batch mode" below. |
+| Output format | `--format <mode>` (CLI-only) | *(n/a)* | `grid` (default, the box-drawing table), `summary` (one line of counts, no per-name grid), or `json` (a fixed machine-readable shape — see "Batch mode" below). |
 
 Native-command syntax note: `Excluding`/`Including` clauses need a literal
 `:` before them (`NamespaceAnalysis MyDev.PartA : Excluding Corelib.`, not a
@@ -156,6 +158,63 @@ the first place*. Once a name is probed, every visible candidate is reported,
 even one from a library you never named — this mirrors how `Locate` itself
 behaves, and exists specifically so a real clash can't hide just because you
 forgot to name a third library.
+
+## Batch mode
+
+CLI-only. Point it at a whole project instead of one file:
+
+```sh
+namespace-analysis -R path/to/libs MyDev --dir path/to/project --format summary
+```
+
+Every target file (explicit positional files, then everything `--dir`
+recursively finds, sorted per directory for determinism) loads into a single
+Rocq session, in that order; the domain scan, clash detection, and report
+then run exactly once at the end, over everything loaded — not once per
+file. The engine itself needed no changes for this: `Glob_capture`'s
+occurrence buffer already accumulates across however many files get loaded
+before it's read, and `Report`/`Clash_detect` already operate on whatever's
+currently loaded, not per-file. A single positional file is just the
+one-element case of the same code path — output is byte-identical to
+before batch mode existed.
+
+**Precondition**: like any `Require`, every file's own dependencies need to
+already be compiled to `.vo` on disk — `--dir` doesn't build anything itself,
+it re-elaborates the files you point it at, relying on the target project's
+own build having already run once (`make`/`dune build`/whatever it uses).
+This is Rocq's own baseline requirement for `Require`, not something this
+tool adds.
+
+**Output formats** (`--format`): `grid` (default) is the box-drawing table
+from the example above. `summary` prints one line of counts instead — no
+per-name grid — meant for a whole-corpus run where the full grid could run
+to hundreds of rows:
+
+```
+NamespaceAnalysis: 1523 symbol(s) in scanned domain(s), 4 clash(es) found (1 with no winner marked), 812 identifier(s) used
+```
+
+`json` emits a fixed, hand-serialized shape (no new dependency) for pulling
+numbers out programmatically instead of grepping terminal output:
+
+```json
+{"member_count":3,"clashes":[{"name":"K","winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"used":[{"identifier":"helper","defined_in":"MyDev.PartA"},{"identifier":"K","defined_in":"MyDev.PartB"}]}
+```
+
+Two caveats specific to a whole-corpus batch run, not single-file usage:
+- **"Defined in" is always the *defining* library's logical path, not the
+  analyzed source file.** `Dumpglob`'s own `filepath` field (which
+  `Glob_capture`/`Report` read straight through) is
+  `Names.DirPath.to_string lib_dp` — the dirpath of wherever the identifier
+  is *defined*, regardless of which of the batch's files referenced it. Two
+  files in the same batch that each use a different identifier will show up
+  as two separate rows with their own (possibly identical) defining
+  locations, not as two different file paths.
+- **The single "winner" a batch run reports for a clashing name is an
+  artifact of `--dir`'s file-processing order** (alphabetical, for
+  determinism), not anything meaningful about the corpus's own real
+  build/import order. Trust that a clash *exists*; don't read much into
+  which candidate an aggregate run happened to mark as current winner.
 
 ## Why this exists
 
@@ -274,10 +333,14 @@ same-named libraries; a domain named only as an argument, never actually
 short-name pollution occurred; the default `Corelib` exclusion
 disappearing/reappearing correctly with `--include`; a clash buried in the
 *second* type of a two-type mutual inductive block; a clash between two
-libraries' same-named constructors on otherwise differently-named types; and
-the "excluded winner" edge case below, pinning that a clash whose actual
-current winner falls under an excluded prefix is still reported, with no
-winner marked, rather than either hidden entirely or shown anyway.
+libraries' same-named constructors on otherwise differently-named types; the
+"excluded winner" edge case below, pinning that a clash whose actual current
+winner falls under an excluded prefix is still reported, with no winner
+marked, rather than either hidden entirely or shown anyway; batch mode
+(`--dir`) correctly aggregating identifier occurrences from more than one
+target file into a single report, with single-file invocations remaining
+byte-identical to before batch mode existed; and `--format summary`/`json`
+agreeing with the default grid's clash count on the same batch input.
 
 `test/run_error_test.sh`, invoked automatically at the end of the above,
 covers the CLI's error paths: no target file, an `-R` pointing at a

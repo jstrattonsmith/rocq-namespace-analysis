@@ -59,6 +59,58 @@ let to_pp (r : t) =
   header ++ fnl () ++ str "Clashes:" ++ fnl () ++ clash_body ++ fnl ()
   ++ str "Used identifiers:" ++ fnl () ++ used_body
 
+let to_summary (r : t) =
+  let clash_count = List.length r.clashes in
+  let no_winner_count = List.length (List.filter (fun (c : Clash_detect.clash) -> c.winner = None) r.clashes) in
+  let used_count = List.length (List.filter is_named_occurrence r.used) in
+  Printf.sprintf
+    "NamespaceAnalysis: %d symbol(s) in scanned domain(s), %d clash(es) found (%d with no winner marked), %d identifier(s) used"
+    r.member_count clash_count no_winner_count used_count
+
+let json_escape s =
+  let buf = Buffer.create (String.length s + 2) in
+  String.iter
+    (fun c ->
+      match c with
+      | '"' -> Buffer.add_string buf "\\\""
+      | '\\' -> Buffer.add_string buf "\\\\"
+      | '\n' -> Buffer.add_string buf "\\n"
+      | '\t' -> Buffer.add_string buf "\\t"
+      | c when Char.code c < 0x20 -> Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
+      | c -> Buffer.add_char buf c)
+    s;
+  Buffer.contents buf
+
+let json_string s = "\"" ^ json_escape s ^ "\""
+
+let to_json (r : t) =
+  let clash_json (c : Clash_detect.clash) =
+    let winner =
+      match c.winner with
+      | Some w -> json_string (qualified_name w)
+      | None -> "null"
+    in
+    let alternatives =
+      c.alternatives
+      |> List.map qualified_name
+      |> List.sort String.compare
+      |> List.map json_string
+      |> String.concat ","
+    in
+    Printf.sprintf {|{"name":%s,"winner":%s,"alternatives":[%s]}|}
+      (json_string (Id.to_string c.name)) winner alternatives
+  in
+  let used_json (o : Glob_capture.occurrence) =
+    Printf.sprintf {|{"identifier":%s,"defined_in":%s}|}
+      (json_string o.ident) (json_string (occurrence_location o))
+  in
+  let clashes_json = r.clashes |> List.map clash_json |> String.concat "," in
+  let used_json_list =
+    r.used |> List.filter is_named_occurrence |> List.map used_json |> String.concat ","
+  in
+  Printf.sprintf {|{"member_count":%d,"clashes":[%s],"used":[%s]}|}
+    r.member_count clashes_json used_json_list
+
 let to_string ?(color = false) r =
   let header =
     Printf.sprintf "NamespaceAnalysis: %d symbol(s) in scanned domain(s)" r.member_count

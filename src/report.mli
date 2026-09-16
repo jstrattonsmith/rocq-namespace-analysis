@@ -22,3 +22,19 @@ val to_pp : t -> Pp.t
     terminal front end. The plain-text winner marker is always present
     regardless. *)
 val to_string : ?color:bool -> t -> string
+
+(** Counts only, one line, no per-name grid -- for a whole-corpus batch run
+    where the full grid could run to hundreds of rows. "No winner marked"
+    covers both a purely hypothetical clash (nothing visible yet) and an
+    excluded actual winner ({!Clash_detect.clash.winner}'s [None] case
+    doesn't currently distinguish the two -- see its doc comment); this is
+    reported as one combined count rather than overclaiming a split we can't
+    actually make from the data we have. *)
+val to_summary : t -> string
+
+(** A fixed JSON shape (hand-serialized, no external JSON dependency,
+    intentionally not a general-purpose encoder): [{"member_count": int,
+    "clashes": [{"name", "winner" (string or null), "alternatives": [string]},
+    ...], "used": [{"identifier", "defined_in"}, ...]}]. Alternatives are
+    sorted alphabetically, same as the grid. *)
+val to_json : t -> string

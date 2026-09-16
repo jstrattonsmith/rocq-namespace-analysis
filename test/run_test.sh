@@ -230,6 +230,46 @@ echo "==> excluded winner, CLI parity"
 diff -u "$WORK/ew_plugin.txt" "$WORK/ew_cli.txt"
 
 # ---------------------------------------------------------------------------
+echo "==> batch mode (--dir): aggregates occurrences across multiple target files into one report"
+# Two independent target files (test/fixtures/batch/{One,Two}.v), each
+# Requiring a different half of MyDev and Check-ing a different identifier.
+# Neither file alone would surface both -- this is specifically checking
+# that Glob_capture's occurrence buffer accumulates across every file in the
+# batch, not just the last one loaded. (Note: "Defined in" is always the
+# *defining* library's logical dirpath -- Dumpglob's own filepath field is
+# `Names.DirPath.to_string lib_dp`, not the analyzed source file -- so both
+# rows below correctly still say "MyDev.PartA"/"MyDev.PartB", not the path
+# to One.v/Two.v; what's being checked is that both rows appear at all.)
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  --dir test/fixtures/batch > "$WORK/batch_grid.txt"
+grep -q "helper.*MyDev.PartA" "$WORK/batch_grid.txt"
+grep -q "K.*MyDev.PartB" "$WORK/batch_grid.txt"
+grep -q "MyDev.PartB.K <- used" "$WORK/batch_grid.txt"
+
+echo "==> batch mode, backward compatibility: single-file invocation is still byte-identical"
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  test/fixtures/MainCli.v > "$WORK/batch_compat.txt"
+diff -u test/expected/report.txt "$WORK/batch_compat.txt"
+
+echo "==> --format summary / --format json agree with the grid on the same batch input"
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  --dir test/fixtures/batch --format summary > "$WORK/batch_summary.txt"
+grep -q "1 clash(es) found (0 with no winner marked), 2 identifier(s) used" "$WORK/batch_summary.txt"
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  --dir test/fixtures/batch --format json > "$WORK/batch_json.txt"
+grep -q '"name":"K","winner":"MyDev.PartB.K","alternatives":\["MyDev.PartA.K"\]' "$WORK/batch_json.txt"
+grep -q '"identifier":"helper","defined_in":"MyDev.PartA"' "$WORK/batch_json.txt"
+grep -q '"identifier":"K","defined_in":"MyDev.PartB"' "$WORK/batch_json.txt"
+
+echo "==> --format rejects an unknown value cleanly"
+set +e
+OUT=$("$CLI" -R "$WORK/mydev" MyDev --format bogus test/fixtures/MainCli.v 2>&1)
+CODE=$?
+set -e
+[ "$CODE" -eq 1 ] || { echo "FAIL: expected exit 1 for unknown --format, got $CODE"; exit 1; }
+echo "$OUT" | grep -q "unknown --format value"
+
+# ---------------------------------------------------------------------------
 echo "==> error-path tests"
 bash "$ROOT/test/run_error_test.sh"
 

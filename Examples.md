@@ -298,3 +298,79 @@ with `gh run watch --exit-status`.
 Both runs finished in well under a minute with no packages built from
 source — nixpkgs' binary cache already had every dependency (`rocq-core`,
 `dune`, `ocaml`, `odoc`, etc.) for the pinned `flake.lock` revision.
+
+## 7. Batch mode and output formats (Workstream 8)
+
+**Fixture files** (`test/fixtures/batch/`) -- two independent target files,
+each `Require`ing a different half of `MyDev` and `Check`-ing a different
+identifier, so that only a correctly-aggregating batch run surfaces both:
+
+`One.v`:
+```coq
+From MyDev Require Import PartA.
+
+Check helper 3.
+```
+
+`Two.v`:
+```coq
+From MyDev Require Import PartB.
+
+Check K.
+```
+
+**Command:**
+```sh
+namespace-analysis -R path/to/libs MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  --dir test/fixtures/batch
+```
+
+**Actual output** -- both `helper` (from `One.v`) and `K` (from `Two.v`)
+appear in one aggregated report, proving `Glob_capture` accumulated
+occurrences across both files rather than just the last one loaded:
+```
+NamespaceAnalysis: 3 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬───────────────────────────┐
+│ Short name │ Candidates (alphabetical) │
+├────────────┼───────────────────────────┤
+│ K          │ MyDev.PartA.K             │
+│            │ MyDev.PartB.K <- used     │
+└────────────┴───────────────────────────┘
+Used identifiers:
+┌────────────┬─────────────┐
+│ Identifier │ Defined in  │
+├────────────┼─────────────┤
+│ helper     │ MyDev.PartA │
+├────────────┼─────────────┤
+│ K          │ MyDev.PartB │
+└────────────┴─────────────┘
+```
+
+Note "Defined in" shows the *defining* library for both rows, not `One.v`
+or `Two.v` -- that column was always the identifier's definition location,
+not the analyzed source file (`Dumpglob`'s own `filepath` field is
+`Names.DirPath.to_string lib_dp`, confirmed by reading
+`rocq-runtime`'s `interp/dumpglob.ml` directly). What proves multi-file
+aggregation here is that *both rows appear at all*, not what's in that
+column.
+
+**`--format summary`** on the same input:
+```
+NamespaceAnalysis: 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 2 identifier(s) used
+```
+
+**`--format json`** on the same input:
+```json
+{"member_count":3,"clashes":[{"name":"K","winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"used":[{"identifier":"helper","defined_in":"MyDev.PartA"},{"identifier":"K","defined_in":"MyDev.PartB"}]}
+```
+
+**Backward compatibility confirmed, not just claimed**: the same single-file
+invocation that predates batch mode (`MainCli.v` against `test/expected/report.txt`)
+still diffs byte-identical after this change.
+
+**Confirmed load-bearing**: reverting `cli/namespace_analysis_cli.ml` back
+to its pre-batch-mode version makes `test/run_test.sh` fail immediately at
+the new batch-mode section with a clean `Don't know what to do with --dir`
+from Rocq's own argument parser (the flag falls through to it once our own
+parser no longer claims it) -- confirmed directly, then reverted.

@@ -15,29 +15,46 @@ let usage =
         \  --exclude <dirpath>    hide candidates under this prefix (repeatable;\n\
         \                         Corelib is excluded by default)\n\
         \  --include <dirpath>    un-hide a prefix (repeatable; overrides both\n\
-        \                         the Corelib default and --exclude)\n";
+        \                         the Corelib default and --exclude)\n\
+        \  --dir <path>           recursively add every *.v file under <path>\n\
+        \                         (repeatable; sorted per directory for\n\
+        \                         determinism; appended after any explicit\n\
+        \                         target files)\n\
+        \  --format <mode>        grid (default), summary, or json\n";
     }
 
-(* Consumes our own --domain/--exclude/--include/<file> arguments, leaving
-   everything else (standard -R/-Q/-I flags, etc.) for Coqargs.parse_args to
-   handle, mirroring how coqtop.ml's parse_extra hands off to
-   Stmargs.parse_args and then to the standard argument parser inside
-   Coqinit.parse_arguments. *)
+(* Consumes our own --domain/--exclude/--include/--dir/--format/<file>
+   arguments, leaving everything else (standard -R/-Q/-I flags, etc.) for
+   Coqargs.parse_args to handle, mirroring how coqtop.ml's parse_extra hands
+   off to Stmargs.parse_args and then to the standard argument parser inside
+   Coqinit.parse_arguments.
+
+   Every bare non-dash token is a target file -- not just the first -- since
+   `extras` handed here has already had every *recognized* flag (including
+   -R/-Q/-I and their arguments) stripped out by the outer Rocq arg parser
+   before parse_extra ever sees it (confirmed: this is exactly why the
+   existing `-R dir dirpath --domain ... file.v` invocations already parsed
+   correctly even before batch mode). *)
 let parse_extra opts extras =
-  let rec go domains excl incl file = function
-    | "--domain" :: d :: rest -> go (d :: domains) excl incl file rest
-    | "--exclude" :: d :: rest -> go domains (d :: excl) incl file rest
-    | "--include" :: d :: rest -> go domains excl (d :: incl) file rest
-    | x :: rest when file = None && (String.length x = 0 || x.[0] <> '-') ->
-      go domains excl incl (Some x) rest
+  let rec go domains excl incl files dirs format = function
+    | "--domain" :: d :: rest -> go (d :: domains) excl incl files dirs format rest
+    | "--exclude" :: d :: rest -> go domains (d :: excl) incl files dirs format rest
+    | "--include" :: d :: rest -> go domains excl (d :: incl) files dirs format rest
+    | "--dir" :: d :: rest -> go domains excl incl files (d :: dirs) format rest
+    | "--format" :: f :: rest -> go domains excl incl files dirs (Some f) rest
+    | x :: rest when String.length x = 0 || x.[0] <> '-' ->
+      go domains excl incl (x :: files) dirs format rest
     | x :: rest ->
-      let (domains, excl, incl, file), rest = go domains excl incl file rest in
-      (domains, excl, incl, file), x :: rest
-    | [] -> (domains, excl, incl, file), []
+      let (domains, excl, incl, files, dirs, format), rest =
+        go domains excl incl files dirs format rest
+      in
+      (domains, excl, incl, files, dirs, format), x :: rest
+    | [] -> (domains, excl, incl, files, dirs, format), []
   in
-  let (domains, excl, incl, file), extras = go [] [] [] None extras in
+  let (domains, excl, incl, files, dirs, format), extras = go [] [] [] [] [] None extras in
   let async_opts, extras = Stmargs.parse_args opts extras in
-  (List.rev domains, List.rev excl, List.rev incl, file, async_opts), extras
+  ( (List.rev domains, List.rev excl, List.rev incl, List.rev files, List.rev dirs, format, async_opts),
+    extras )
 
 let dirpath_of_string s =
   let parts = String.split_on_char '.' s in
@@ -48,6 +65,30 @@ let default_excludes = [ dirpath_of_string "Corelib" ]
 let die msg =
   prerr_endline ("namespace-analysis: " ^ msg);
   exit 1
+
+(* Recursively collects every *.v under [dir], sorted by full path for
+   deterministic ordering regardless of the underlying filesystem's own
+   directory-entry order. Doesn't special-case build byproduct directories
+   (e.g. _build) -- --dir is meant to be pointed at a real source tree, and
+   guarding against every possible byproduct directory name a target project
+   might use would be guessing at a problem no one has actually hit. *)
+let collect_v_files_under dir =
+  let rec walk d acc =
+    Array.fold_left
+      (fun acc name ->
+        let path = Filename.concat d name in
+        if Sys.is_directory path then walk path acc
+        else if Filename.check_suffix name ".v" then path :: acc
+        else acc)
+      acc (Sys.readdir d)
+  in
+  List.sort String.compare (walk dir [])
+
+let parse_format = function
+  | None | Some "grid" -> `Grid
+  | Some "summary" -> `Summary
+  | Some "json" -> `Json
+  | Some other -> die (Printf.sprintf "unknown --format value %S (expected grid, summary, or json)" other)
 
 (* Mirrors rocq-runtime's own `coqc_run` (toplevel/coqc.ml): without this,
    any exception past argument parsing (a bad `-R` directory, a `.v` file
@@ -64,12 +105,14 @@ let () =
   Coqinit.init_ocaml ();
   try
     let args = List.tl (Array.to_list Sys.argv) in
-    let opts, (domain_strs, excl_strs, incl_strs, file, async_opts) =
+    let opts, (domain_strs, excl_strs, incl_strs, files, dirs, format_str, async_opts) =
       Coqinit.parse_arguments ~parse_extra ~initial_args:Coqargs.default args
     in
-    let f_in = match file with
-      | Some f -> f
-      | None -> die "need a target .v file"
+    let format = parse_format format_str in
+    let f_ins = files @ List.concat_map collect_v_files_under dirs in
+    let f_ins = match f_ins with
+      | [] -> die "need a target .v file"
+      | fs -> fs
     in
     Stm.init_process async_opts;
     Coqinit.init_runtime ~usage opts;
@@ -89,8 +132,18 @@ let () =
        need the "Require Import the plugin first" workaround. *)
     Glob_capture.install ();
     let ldir = Stm.get_ldir ~doc:state.doc in
-    let source = Loc.InFile { dirpath = Some (DirPath.to_string ldir); file = f_in } in
-    let state = Vernac.load_vernac ~echo:false ~check:true ~state ~source f_in in
+    (* Load every file into this one Rocq session -- state threads through
+       each call exactly as the single-file case already did -- then do
+       exactly one domain scan + clash detection + report at the end below,
+       same as today. The single-file case is just the [f_ins = [f]] case of
+       this same fold, byte-for-byte unchanged. *)
+    let state =
+      List.fold_left
+        (fun state f_in ->
+          let source = Loc.InFile { dirpath = Some (DirPath.to_string ldir); file = f_in } in
+          Vernac.load_vernac ~echo:false ~check:true ~state ~source f_in)
+        state f_ins
+    in
     let _fullstate = Stm.finish ~doc:state.doc in
     Stm.join ~doc:state.doc;
     let dps = if domain_strs = [] then Library.loaded_libraries () else List.map dirpath_of_string domain_strs in
@@ -106,7 +159,10 @@ let () =
     let clashes = Clash_detect.find_clashes ~excluded members in
     let used = Glob_capture.occurrences () in
     let report = Report.make ~member_count:(List.length members) ~clashes ~used in
-    print_string (Report.to_string ~color:(Unix.isatty Unix.stdout) report);
+    (match format with
+     | `Grid -> print_string (Report.to_string ~color:(Unix.isatty Unix.stdout) report)
+     | `Summary -> print_string (Report.to_summary report)
+     | `Json -> print_string (Report.to_json report));
     print_newline ()
   with exn ->
     flush_all ();

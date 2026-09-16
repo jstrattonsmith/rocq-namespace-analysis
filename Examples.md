@@ -423,6 +423,28 @@ box-drawing table. That's exactly what `--format summary`/`--format json`
 to one line via `--format summary`, or a JSON blob under 100KB via
 `--format json`.
 
+**Follow-up investigation: is there more headroom past the O(n log n)
+fix?** Checked directly rather than guessing: ran 200,000 scanned members
+with *zero* clashes (all unique names) and got ~1.24s -- essentially
+identical to the 100,000-clash run above (1.145s). That means
+`Clash_detect`'s per-name work is no longer the cost driver at all; the
+remaining time is dominated by `Domain_scan.members_of_domains`'s
+`Environ.fold_constants`/`fold_inductives`, which walks *every* object in
+the entire kernel environment (Corelib included) regardless of how narrow
+the probed domain is, filtering as it goes. Checked whether Rocq itself
+has a faster path for this: read `vernacentries.ml`'s own `print_namespace`
+(the implementation behind `Print Namespace`, which `Domain_scan`'s own
+doc comment already says it mirrors) -- it does the exact same full
+`Environ.fold_constants` walk, filtered by module-path match. There's no
+faster official API; this is the real floor of "enumerate everything under
+a dirpath prefix" as Rocq exposes it, not something specific to this
+tool's own logic. A genuinely faster path would mean walking a named
+domain's own compiled module structure directly instead of the whole
+environment -- a real, understood, but substantially bigger re-architecture
+of `Domain_scan`, not attempted here given 200,000 members already
+completes in close to a second, an order of magnitude beyond anything a
+real corpus is likely to contain.
+
 ---
 
 The sections below backfill examples for the original v1/v2 feature set

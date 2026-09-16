@@ -1,0 +1,12 @@
+# Editor tooling only (VsRocq, Proof General, RocqIDE) -- dune's own build
+# does not read this file, `dune build` is still the real build. Points at
+# dune's build OUTPUT directory, not the source tree, since dune compiles
+# theories/Loader.v into _build/default/theories/Loader.vo, not into
+# theories/ itself -- this mirrors test/run_test.sh's own
+# THEORIES="-R _build/default/theories NamespaceAnalysis" exactly. Requires
+# `dune build` to have already run at least once. See Editor_planning.md.
+#
+# Deliberately does not cover test/fixtures/: each fixture pair compiles
+# into its own transient temp-dir mapping inside run_test.sh and was never
+# meant to be edited interactively.
+-R _build/default/theories NamespaceAnalysis

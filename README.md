@@ -384,6 +384,53 @@ public API worth documenting yet) would use Rocq's equivalent, `rocq doc`
 cross-referencing `Glob_capture` itself hijacks -- see "Shadows real `.glob`
 output" below.
 
+## Editor setup (live/interactive testing)
+
+`NamespaceAnalysis` is an ordinary vernacular command that prints via
+`Feedback.msg_notice` -- exactly like `Locate`/`Search` -- so any Rocq
+front-end that can drive a Rocq process and render its `Feedback` output
+gets it for free, with no NamespaceAnalysis-specific editor integration.
+What it does need, like any Rocq plugin, is to actually be *findable*:
+`OCAMLPATH` reaching this project's own `_build/install/default/lib` (for
+`Declare ML Module`), and an `-R`/`_CoqProject` mapping so
+`From NamespaceAnalysis Require Import Loader.` resolves. This project
+isn't published via opam/Nix yet (see `Editor_planning.md`), so both are
+wired up locally:
+
+- **`_CoqProject`** at the repo root maps `-R _build/default/theories
+  NamespaceAnalysis` -- dune's *build output* directory, not `theories/`
+  itself, since that's where `dune build` actually puts `Loader.vo`. Run
+  `dune build` at least once before opening an editor.
+- **`nix develop .#editor`** is a second, heavier devShell (on top of the
+  normal `nix develop`) adding `vsrocq-language-server` (confirmed: pulls
+  in a real GTK3/Cairo/Pango chain, which is exactly why it's a separate
+  shell and not folded into `devShells.default` — CI and the CLI/test-suite
+  path never need it).
+
+**VS Code**: install the recommended extension (`.vscode/extensions.json`
+points at `rocq-prover.vsrocq`), then launch VS Code *from inside* the
+editor shell so it inherits `PATH`/`OCAMLPATH`:
+```sh
+nix develop .#editor
+code .
+```
+`.vscode/settings.json` sets `"vsrocq.path": "vsrocqtop"` (a bare command,
+resolved via `PATH` — not a hardcoded `/nix/store/...` path, which would go
+stale on the next `nix flake update`). Confirmed the underlying mechanism
+works end-to-end by driving `rocq repl` the same way `vsrocqtop` would
+(`rocq repl -R _build/default/theories NamespaceAnalysis`, loading the
+plugin and running `NamespaceAnalysis Hello.` successfully) — the actual
+VS Code extension itself wasn't separately verified in a GUI session, so if
+`vsrocqtop` isn't found, launching VS Code from the shell (not double-clicking
+a recent-projects entry, which bypasses the shell entirely) is the first
+thing to check; VsRocq's own FAQ notes this is "usually a PATH issue" and
+suggests a hardcoded full path as the fallback if so.
+
+**Emacs (Proof General) and RocqIDE**: not wired up yet — see
+`Editor_planning.md` for what's already confirmed (Proof General reads
+`_CoqProject` automatically; RocqIDE's Nix packaging status is still an
+open question) and what's left to do.
+
 ## Known limitations
 
 - **Capture starts at plugin load time.** The native command only sees

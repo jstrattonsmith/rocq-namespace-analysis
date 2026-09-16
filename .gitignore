@@ -16,3 +16,11 @@ result
 result-*
 .direnv/
 .envrc
+
+# Overrides a global ~/.gitignore exclusion of .vscode/* -- these two are
+# portable project config (a recommended extension, a PATH-based command),
+# not personal machine settings, and tracking them is the point of the
+# editor demo setup (see README "Editor setup" / Editor_planning.md).
+!.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json

@@ -1,3 +1,4 @@
 (rocq.theory
  (name NamespaceAnalysis)
+ (package rocq-namespace-analysis)
  (plugins rocq-namespace-analysis.plugin))

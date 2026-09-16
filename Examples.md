@@ -644,3 +644,52 @@ the compact form the note points at. Confirmed no false positive on an
 ordinary small report (`test/run_test.sh` asserts the note is *absent* for
 `MainCli.v`'s single clash), and confirmed load-bearing by reverting
 `src/report.ml`/`.mli` and watching the new `run_test.sh` section fail.
+
+## 15. Transitive ("chained") imports -- no special-case code needed
+
+Directly prompted by a question about whether multi-hop import chains
+(file C requires B, B requires A) are handled correctly. They are, and
+the tool needed zero changes to prove it -- built a 3-library chain to
+confirm rather than just reasoning about it.
+
+`ChainA.v`: `Definition ChainedName := 1.`
+`ChainB.v`: `Require Export ChainA.` (also tested with a plain `Require
+ChainA.`, no `Export` -- same result either way, since domain membership
+comes from the kernel environment, not import visibility)
+`ChainD.v`: `Definition ChainedName := 99.` (unrelated to A/B, just
+happens to clash)
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From ChainB Require Import ChainB.
+From ChainD Require Import ChainD.
+
+Check ChainedName.
+
+NamespaceAnalysis ChainA ChainD.
+```
+
+The target file never mentions `ChainA` at all -- only `ChainB`, which
+transitively pulls it in:
+
+```
+NamespaceAnalysis: 2 symbol(s) in scanned domain(s)
+Clashes:
+┌─────────────┬───────────────────────────────────┐
+│ Short name  │ Candidates (alphabetical)         │
+├─────────────┼───────────────────────────────────┤
+│ ChainedName │ ChainA.ChainA.ChainedName         │
+│             │ ChainD.ChainD.ChainedName <- used │
+└─────────────┴───────────────────────────────────┘
+```
+
+`ChainA.ChainA.ChainedName` is found and correctly flagged as clashing
+with `ChainD.ChainD.ChainedName`, despite being two hops away from the
+analyzed file. This works because `Domain_scan`/`Clash_detect` query the
+live kernel environment and `Nametab` *after* Rocq's elaborator has
+already resolved the entire transitive closure -- there's no import graph
+for this tool to walk (or fail to walk correctly) in the first place. See
+README "Transitive imports and circular imports" for why circular imports
+are a non-issue for the same underlying reason (they can't compile at
+all, confirmed directly: two mutually-`Require`ing files both fail with
+"Unable to locate library ... (while searching for a .vos file)").

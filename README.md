@@ -159,6 +159,31 @@ even one from a library you never named — this mirrors how `Locate` itself
 behaves, and exists specifically so a real clash can't hide just because you
 forgot to name a third library.
 
+### Transitive imports and circular imports
+
+**Transitive (chained) `Require`/`Import` is handled correctly, by
+construction, with no special-case code for it anywhere in this tool.**
+Confirmed directly: if `C` `Require Import`s only `B`, and `B` itself
+`Require Export`s (or even just plain `Require`s) `A`, a clash between
+`A`'s and some other library's identically-named definition is still found
+and correctly reported — even though `C` never mentions `A` at all. This
+isn't a special feature; it falls out of the tool's whole design: `Domain_scan`
+and `Clash_detect` inspect the live, fully-resolved kernel environment and
+`Nametab` state (`Global.env ()`, `Nametab.locate_all`) *after* Rocq's own
+elaborator has already processed the entire transitive closure of
+`Require`s — the tool never walks an import graph itself, so it can't miss
+a link in a chain regardless of how many hops deep it is. See `Examples.md`
+section 15 for a worked example.
+
+**Circular `Require`s can't happen, and aren't something this tool needs to
+defend against.** Confirmed directly: two files that `Require` each other
+both fail to compile outright ("Unable to locate library ... (while
+searching for a .vos file)"), for either one, regardless of which you try
+to compile first — a `.vo` can only reference dependencies that are
+*already* compiled, so Rocq's library system is structurally a DAG, not
+just conventionally one. By the time this tool ever sees a compiled
+library, its dependency graph is guaranteed acyclic.
+
 ## Batch mode
 
 CLI-only. Point it at a whole project instead of one file:

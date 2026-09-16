@@ -34,7 +34,8 @@ split_blocks() {
 
 echo "==> compiling fixture libraries"
 mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
-  "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb"
+  "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb" \
+  "$WORK/chaina" "$WORK/chainb" "$WORK/chaind"
 cp test/fixtures/libs/mydev/PartA.v test/fixtures/libs/mydev/PartB.v test/fixtures/libs/mydev/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
@@ -48,6 +49,9 @@ cp test/fixtures/libs/construct/a/ConstructA.v "$WORK/consa/"
 cp test/fixtures/libs/construct/b/ConstructB.v "$WORK/consb/"
 cp test/fixtures/libs/exclwinner/a/ExclWinA.v "$WORK/exclwina/"
 cp test/fixtures/libs/exclwinner/b/ExclWinB.v "$WORK/exclwinb/"
+cp test/fixtures/libs/chain/a/ChainA.v "$WORK/chaina/"
+cp test/fixtures/libs/chain/b/ChainB.v "$WORK/chainb/"
+cp test/fixtures/libs/chain/d/ChainD.v "$WORK/chaind/"
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartC.v" >/dev/null
@@ -63,6 +67,9 @@ rocq compile -R "$WORK/consa" ConstructLibA "$WORK/consa/ConstructA.v" >/dev/nul
 rocq compile -R "$WORK/consb" ConstructLibB "$WORK/consb/ConstructB.v" >/dev/null
 rocq compile -R "$WORK/exclwina" ExclWinLibA "$WORK/exclwina/ExclWinA.v" >/dev/null
 rocq compile -R "$WORK/exclwinb" ExclWinLibB "$WORK/exclwinb/ExclWinB.v" >/dev/null
+rocq compile -R "$WORK/chaina" ChainA "$WORK/chaina/ChainA.v" >/dev/null
+rocq compile -R "$WORK/chaina" ChainA -R "$WORK/chainb" ChainB "$WORK/chainb/ChainB.v" >/dev/null
+rocq compile -R "$WORK/chaind" ChainD "$WORK/chaind/ChainD.v" >/dev/null
 
 # ---------------------------------------------------------------------------
 echo "==> base fixture: native plugin command (Main.v)"
@@ -228,6 +235,25 @@ echo "==> excluded winner, CLI parity"
   --domain ExclWinLibA.ExclWinA --domain ExclWinLibB.ExclWinB \
   test/fixtures/ExcludedWinnerCli.v > "$WORK/ew_cli.txt"
 diff -u "$WORK/ew_plugin.txt" "$WORK/ew_cli.txt"
+
+# ---------------------------------------------------------------------------
+echo "==> transitive imports (ChainedImport.v): a 2-hop Require chain is still found"
+# ChainB Require Exports ChainA; the target file only ever mentions ChainB
+# and ChainD directly, never ChainA -- pinning that Domain_scan/Clash_detect
+# see ChainA's member anyway, since they query the fully-resolved kernel
+# environment (Global.env ()), not an import graph this tool would have to
+# walk itself.
+rocq compile $THEORIES -R "$WORK/chaina" ChainA -R "$WORK/chainb" ChainB -R "$WORK/chaind" ChainD \
+  test/fixtures/ChainedImport.v > "$WORK/chain_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/chain_out.txt" > "$WORK/chain_plugin.txt"
+grep -q "ChainA.ChainA.ChainedName" "$WORK/chain_plugin.txt"
+grep -q "ChainD.ChainD.ChainedName <- used" "$WORK/chain_plugin.txt"
+
+echo "==> transitive imports, CLI parity"
+"$CLI" -R "$WORK/chaina" ChainA -R "$WORK/chainb" ChainB -R "$WORK/chaind" ChainD \
+  --domain ChainA --domain ChainD \
+  test/fixtures/ChainedImportCli.v > "$WORK/chain_cli.txt"
+diff -u "$WORK/chain_plugin.txt" "$WORK/chain_cli.txt"
 
 # ---------------------------------------------------------------------------
 echo "==> batch mode (--dir): aggregates occurrences across multiple target files into one report"

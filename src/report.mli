@@ -15,6 +15,12 @@ val make :
   used:Glob_capture.occurrence list ->
   t
 
+(** Both [to_pp] and [to_string]'s grid, past {!large_report_threshold}
+    distinct clashing names, prepend a one-line note pointing at
+    [to_summary]/[to_json] via the CLI's [--format] flag (confirmed: 1,000
+    clashes alone render as a 3,007-line table) -- the plugin has no
+    [--format] of its own, so the note always points at the CLI regardless
+    of which front end is showing it. *)
 val to_pp : t -> Pp.t
 
 (** [color] (default [false]) additionally wraps the winning candidate in

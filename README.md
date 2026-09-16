@@ -209,6 +209,12 @@ it's just excluded). `Clash_detect.clash.winner` collapses both to `None`
 already (see its doc comment); splitting them in the summary would need a
 `Clash_detect` signature change, not done here.
 
+Past 100 distinct clashing names, the `grid` format itself (both front
+ends) prepends a one-line note pointing at `--format summary`/`json` —
+confirmed 1,000 clashes alone render as a 3,007-line table, so the note
+exists to surface the compact alternative before you're scrolling through
+one, not after.
+
 `json` emits a fixed, hand-serialized shape (no new dependency) for pulling
 numbers out programmatically instead of grepping terminal output:
 

@@ -32,6 +32,25 @@ let clash_row (c : Clash_detect.clash) =
   in
   { Text_table.label = Id.to_string c.name; entries }
 
+(* Past this many distinct clashing names, the grid itself becomes the
+   readability problem, not the analysis (confirmed: 1,000 clashes render
+   as a 3,007-line table) -- surface a hint toward --format summary/json
+   (CLI) rather than silently leaving the reader to scroll through it. Only
+   the grid needs this: --format summary/json are already the compact
+   alternative, and the plugin's message panel has no --format of its own,
+   so the hint always points at the CLI regardless of which front end is
+   currently showing it. *)
+let large_report_threshold = 100
+
+let size_note (r : t) =
+  let n = List.length r.clashes in
+  if n > large_report_threshold then
+    Some
+      (Printf.sprintf
+         "Note: %d clashes found -- for a more compact view of a report this size, use the CLI with --format summary or --format json."
+         n)
+  else None
+
 let is_named_occurrence (o : Glob_capture.occurrence) = o.ident <> "<>"
 
 let occurrence_location (o : Glob_capture.occurrence) =
@@ -56,7 +75,8 @@ let to_pp (r : t) =
     if named_used = [] then str "Used identifiers: (none captured)"
     else Text_table.render_pp ~headers:("Identifier", "Defined in") (List.map used_row named_used)
   in
-  header ++ fnl () ++ str "Clashes:" ++ fnl () ++ clash_body ++ fnl ()
+  let note_line = match size_note r with Some msg -> str msg ++ fnl () | None -> mt () in
+  header ++ fnl () ++ note_line ++ str "Clashes:" ++ fnl () ++ clash_body ++ fnl ()
   ++ str "Used identifiers:" ++ fnl () ++ used_body
 
 let to_summary (r : t) =
@@ -124,5 +144,6 @@ let to_string ?(color = false) r =
     if named_used = [] then "Used identifiers: (none captured)"
     else Text_table.render_string ~ansi:color ~headers:("Identifier", "Defined in") (List.map used_row named_used)
   in
+  let note_lines = match size_note r with Some msg -> [ msg ] | None -> [] in
   String.concat "\n"
-    [ header; "Clashes:"; clash_body; "Used identifiers:"; used_body ]
+    (([ header ] @ note_lines) @ [ "Clashes:"; clash_body; "Used identifiers:"; used_body ])

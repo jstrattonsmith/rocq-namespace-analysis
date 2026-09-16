@@ -27,6 +27,7 @@ command) has zero examples anywhere; see the "Not built" section.
 | Excluded-winner edge case (real winner excluded → no winner shown, not hidden) | `Examples.md` §5 | `ExcludedWinner.v`/`Cli.v` | "excluded winner" | `src/clash_detect.ml` (`winner` computation) |
 | Batch/`--dir` mode, multi-file aggregation | `Examples.md` §7 | `batch/{One,Two}.v` | "batch mode" | `cli/namespace_analysis_cli.ml` |
 | `--format grid\|summary\|json` | `Examples.md` §7 | `batch/{One,Two}.v` | "`--format` summary/json agree..." | `src/report.ml` (`to_summary`, `to_json`) |
+| Large-report note (grid past 100 clashes points at `--format`) | `Examples.md` §14 | generated at test-time, not checked in | "large-report note" / "...but not for a small report" | `src/report.ml` (`size_note`) |
 
 ## Robustness / error handling
 

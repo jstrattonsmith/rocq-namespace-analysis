@@ -625,3 +625,22 @@ Un-hiding Corelib reveals it was actually a 4-way collision the whole
 time (two more `double`s live under `Corelib.Init.{Decimal,Hexadecimal}`),
 not just the one against `Corelib.Init.Nat` the "excluded winner" example
 (section 5 above) uses.
+
+## 14. Large-report note (grid readability)
+
+Directly prompted by a question about the grid becoming hard to read at
+scale. Past 100 distinct clashing names, both `to_pp` (plugin) and
+`to_string` (CLI grid) prepend a one-line note:
+
+```
+NamespaceAnalysis: 202 symbol(s) in scanned domain(s)
+Note: 101 clashes found -- for a more compact view of a report this size, use the CLI with --format summary or --format json.
+Clashes:
+...
+```
+
+`--format summary`/`--format json` never show this note -- they're already
+the compact form the note points at. Confirmed no false positive on an
+ordinary small report (`test/run_test.sh` asserts the note is *absent* for
+`MainCli.v`'s single clash), and confirmed load-bearing by reverting
+`src/report.ml`/`.mli` and watching the new `run_test.sh` section fail.

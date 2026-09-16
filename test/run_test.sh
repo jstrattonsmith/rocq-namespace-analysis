@@ -270,6 +270,29 @@ set -e
 echo "$OUT" | grep -q "unknown --format value"
 
 # ---------------------------------------------------------------------------
+echo "==> large-report note: grid output past 100 clashes points at --format summary/json"
+mkdir -p "$WORK/largea" "$WORK/largeb"
+seq 0 100 | awk '{ print "Definition ld" $1 " : nat -> nat := fun x => x." }' > "$WORK/largea/LargeA.v"
+cp "$WORK/largea/LargeA.v" "$WORK/largeb/LargeB.v"
+rocq compile -R "$WORK/largea" LargeA "$WORK/largea/LargeA.v" >/dev/null
+rocq compile -R "$WORK/largeb" LargeB "$WORK/largeb/LargeB.v" >/dev/null
+cat > "$WORK/LargeDriver.v" <<EOF
+From LargeA Require Import LargeA.
+From LargeB Require Import LargeB.
+EOF
+"$CLI" -R "$WORK/largea" LargeA -R "$WORK/largeb" LargeB --domain LargeA --domain LargeB \
+  "$WORK/LargeDriver.v" > "$WORK/large_out.txt"
+grep -q "^Note: 101 clashes found -- for a more compact view" "$WORK/large_out.txt"
+
+echo "==> ...but not for a small report (no false positives)"
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  test/fixtures/MainCli.v > "$WORK/small_out.txt"
+if grep -q "^Note:" "$WORK/small_out.txt"; then
+  echo "FAIL: large-report note appeared on a report with only 1 clash"
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
 echo "==> error-path tests"
 bash "$ROOT/test/run_error_test.sh"
 

@@ -422,3 +422,206 @@ box-drawing table. That's exactly what `--format summary`/`--format json`
 (Workstream 8, section 7 above) are for: the same 1,000-clash run reduces
 to one line via `--format summary`, or a JSON blob under 100KB via
 `--format json`.
+
+---
+
+The sections below backfill examples for the original v1/v2 feature set
+(everything that predates `Examples.md` itself, from before Workstream 1)
+-- prompted by an explicit "do we have examples for everything?" check
+that found this gap. All output captured directly, same as above.
+
+## 9. Basic two-library clash with a winner marked
+
+Two libraries define the same short name (`K`); the one `Import`ed last
+wins, and the report says so with a plain-text `<- used` marker.
+
+`test/fixtures/libs/mydev/PartA.v`: `Lemma K : True. ... Definition helper (n : nat) := n + 1.`
+`test/fixtures/libs/mydev/PartB.v`: `Lemma K : 1 = 1. ...`
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From MyDev Require Import PartA.
+From MyDev Require Import PartB.
+
+Check helper 3.
+Check K.
+
+NamespaceAnalysis MyDev.PartA MyDev.PartB.
+```
+
+```
+NamespaceAnalysis: 3 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬───────────────────────────┐
+│ Short name │ Candidates (alphabetical) │
+├────────────┼───────────────────────────┤
+│ K          │ MyDev.PartA.K             │
+│            │ MyDev.PartB.K <- used     │
+└────────────┴───────────────────────────┘
+Used identifiers:
+┌────────────┬─────────────┐
+│ Identifier │ Defined in  │
+├────────────┼─────────────┤
+│ helper     │ MyDev.PartA │
+├────────────┼─────────────┤
+│ K          │ MyDev.PartB │
+└────────────┴─────────────┘
+```
+
+This is the tool's own checked-in golden report (`test/expected/report.txt`)
+-- plugin and CLI must both produce this exact text, byte-for-byte.
+
+## 10. Multi-level domains: a shallow prefix catches a deeper clash
+
+Probing `Demo.Sub` (2 levels deep) still catches a clash 4 levels down, at
+`Demo.Sub.Deep.DeepOne`, against a completely different branch
+(`Demo.Other.Sibling`) -- domain arguments are prefixes, not exact paths.
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From Demo.Sub.Deep Require Import DeepOne.
+From Demo.Other Require Import Sibling.
+
+Check Gadget.
+
+NamespaceAnalysis Demo.Sub.
+```
+
+```
+NamespaceAnalysis: 1 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬───────────────────────────────────┐
+│ Short name │ Candidates (alphabetical)         │
+├────────────┼───────────────────────────────────┤
+│ Gadget     │ Demo.Other.Sibling.Gadget <- used │
+│            │ Demo.Sub.Deep.DeepOne.Gadget      │
+└────────────┴───────────────────────────────────┘
+Used identifiers:
+┌────────────┬────────────────────┐
+│ Identifier │ Defined in         │
+├────────────┼────────────────────┤
+│ Gadget     │ Demo.Other.Sibling │
+└────────────┴────────────────────┘
+```
+
+Note the winning candidate (`Demo.Other.Sibling.Gadget`) is found even
+though only its *shallower* ancestor `Demo.Sub` was ever named as a
+domain -- the other candidate, `Demo.Sub.Deep.DeepOne.Gadget`, is 4 levels
+under the probed prefix.
+
+## 11. 0/1/2/3 domain arguments against three same-named libraries
+
+Three libraries (`LibOne`/`LibTwo`/`LibThree`) each define `Shared`.
+Naming 0 domains means "everything currently imported" (so the count
+includes the whole Corelib prelude -- 1013 symbols here, vs. 1-3 when
+domains are named explicitly) but the *clash itself* is identical either
+way -- domain arguments control what's probed, never what counts as a
+clash in the first place.
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From LibOne Require Import Mod.
+From LibThree Require Import Mod.
+From LibTwo Require Import Mod.
+
+Check Shared.
+
+NamespaceAnalysis.
+NamespaceAnalysis LibOne.Mod.
+NamespaceAnalysis LibOne.Mod LibTwo.Mod.
+NamespaceAnalysis LibOne.Mod LibTwo.Mod LibThree.Mod.
+```
+
+First block (0 domains):
+```
+NamespaceAnalysis: 1013 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬─────────────────────────────┐
+│ Short name │ Candidates (alphabetical)   │
+├────────────┼─────────────────────────────┤
+│ Shared     │ LibOne.Mod.Shared           │
+│            │ LibThree.Mod.Shared <- used │
+│            │ LibTwo.Mod.Shared           │
+└────────────┴─────────────────────────────┘
+```
+Blocks 2-4 (1, 2, then 3 named domains) are identical in content to each
+other -- only the member count changes (1, 2, 3) -- confirming that naming
+fewer than all three libraries still surfaces the clash against the ones
+you didn't name.
+
+## 12. A hypothetical (not-yet-imported) domain
+
+`MyDev.PartC` is named as a probe argument but never actually `Require`d
+or `Import`ed in the file -- the report still surfaces it as a would-be
+clash against what's genuinely imported (`PartA`), and proves no
+short-name pollution occurred: `Check K.` still resolves to `PartA`, never
+`PartC`.
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From MyDev Require Import PartA.
+
+NamespaceAnalysis MyDev.PartC.
+
+Check K.
+
+NamespaceAnalysis MyDev.PartC.
+```
+
+First block (before `Check K.`):
+```
+NamespaceAnalysis: 1 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬───────────────────────────┐
+│ Short name │ Candidates (alphabetical) │
+├────────────┼───────────────────────────┤
+│ K          │ MyDev.PartA.K <- used     │
+│            │ MyDev.PartC.K             │
+└────────────┴───────────────────────────┘
+Used identifiers: (none captured)
+```
+`PartA.K` is already marked as winner even though `Check K.` hasn't run
+yet in this block -- it's the real ambient resolution, `PartC.K` is purely
+hypothetical (`Require`d on the spot to be probed, never `Import`ed).
+Second block, after `Check K.`, confirms it directly: "Used identifiers"
+shows `K` resolved to `MyDev.PartA`, never `MyDev.PartC`.
+
+## 13. Exclude/include: Corelib hidden by default
+
+A library's `double` collides with `Corelib.Init.Nat.double`. Hidden by
+default (no clash reported at all -- only 1 non-excluded candidate
+remains); revealed with `--include`/`: Including`.
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From ExcludeDemo Require Import CorelibClash.
+
+Check double 3.
+
+NamespaceAnalysis ExcludeDemo.CorelibClash.
+NamespaceAnalysis ExcludeDemo.CorelibClash : Including Corelib.
+```
+
+Default (Corelib excluded):
+```
+NamespaceAnalysis: 1 symbol(s) in scanned domain(s)
+Clashes:
+No clashes found.
+```
+With `: Including Corelib`:
+```
+NamespaceAnalysis: 1 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬─────────────────────────────────────────┐
+│ Short name │ Candidates (alphabetical)               │
+├────────────┼─────────────────────────────────────────┤
+│ double     │ Corelib.Init.Decimal.Little.double      │
+│            │ Corelib.Init.Hexadecimal.Little.double  │
+│            │ Corelib.Init.Nat.double                 │
+│            │ ExcludeDemo.CorelibClash.double <- used │
+└────────────┴─────────────────────────────────────────┘
+```
+Un-hiding Corelib reveals it was actually a 4-way collision the whole
+time (two more `double`s live under `Corelib.Init.{Decimal,Hexadecimal}`),
+not just the one against `Corelib.Init.Nat` the "excluded winner" example
+(section 5 above) uses.

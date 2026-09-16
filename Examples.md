@@ -374,3 +374,51 @@ to its pre-batch-mode version makes `test/run_test.sh` fail immediately at
 the new batch-mode section with a clean `Don't know what to do with --dir`
 from Rocq's own argument parser (the flag falls through to it once our own
 parser no longer claims it) -- confirmed directly, then reverted.
+
+## 8. Fixing an O(n^2) bottleneck in Clash_detect (performance)
+
+**What prompted this**: a direct question about whether many conflicts
+and/or many scanned symbols could cause slowdown or a hang ahead of the
+Workstream 9 case study. Rather than guess, built a synthetic stress test
+(two libraries with N identically-named `Definition`s each, all clashing)
+and measured directly.
+
+**Before the fix** -- `Clash_detect.find_clashes` grouped `members` by
+short name via a full `List.filter` scan over *every* member, repeated
+once per unique name: O(n) work per name, times n names, so O(n^2)
+overall:
+
+| Clashing symbols | Time |
+|---|---|
+| 1,000 | 0.16s |
+| 10,000 | 10.65s |
+
+A 10x growth in input produced a ~65-70x growth in runtime -- consistent
+with roughly quadratic scaling, not a fluke.
+
+**The fix**: group `members` by basename once, up front, via an `Id.Map`
+(`src/clash_detect.ml`), turning the per-name lookup into an O(log n) map
+access instead of an O(n) linear scan -- O(n log n) overall.
+
+**After the fix**, same measurements plus a much larger one:
+
+| Clashing symbols | Time |
+|---|---|
+| 1,000 | 0.037s |
+| 10,000 | 0.146s (**~73x faster**) |
+| 100,000 | 1.145s |
+
+**Confirmed load-bearing**: `test/run_perf_test.sh` (auto-invoked from
+`test/run_test.sh`) asserts an 8,000-clash scan completes within 5
+seconds. Reverting the fix and re-running it: 7s, failing the assertion
+(matching the extrapolated pre-fix estimate); with the fix: 0s.
+
+**Answering the original question directly**: no, this doesn't hang --
+even 100,000 simultaneous clashes (a scale a real corpus is very unlikely
+to actually hit) complete in close to a second. The genuine risk at scale
+isn't the algorithm anymore; it's the **grid output becoming unreadable**
+long before it becomes slow -- 1,000 clashes alone render as a 3,007-line
+box-drawing table. That's exactly what `--format summary`/`--format json`
+(Workstream 8, section 7 above) are for: the same 1,000-clash run reduces
+to one line via `--format summary`, or a JSON blob under 100KB via
+`--format json`.

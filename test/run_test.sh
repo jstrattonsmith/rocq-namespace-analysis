@@ -273,4 +273,8 @@ echo "$OUT" | grep -q "unknown --format value"
 echo "==> error-path tests"
 bash "$ROOT/test/run_error_test.sh"
 
+# ---------------------------------------------------------------------------
+echo "==> performance tests"
+bash "$ROOT/test/run_perf_test.sh"
+
 echo "ALL TESTS PASSED"

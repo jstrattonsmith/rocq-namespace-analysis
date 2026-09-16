@@ -434,6 +434,44 @@ VS Code extension itself wasn't separately verified in a GUI session, so if
 FAQ notes this is "usually a PATH issue" and suggests a hardcoded full path
 in `vsrocq.path` as the fallback.
 
+### Trying it on the checked-in fixtures
+
+`theories/Loader.v` alone has nothing to actually analyze. To open one of
+the demo fixtures directly (`test/fixtures/Main.v`,
+`test/fixtures/MutualInductive.v`, `test/fixtures/ConstructorClash.v`,
+`test/fixtures/ExcludedWinner.v` — the ones that call the native
+`NamespaceAnalysis` command, as opposed to the `*Cli.v` files, which are
+CLI-only and have no live-editable payload), its own dependency libraries
+need to be compiled first, and `_CoqProject` needs to know where they
+ended up:
+
+```sh
+dune build
+bash test/build_fixtures.sh
+```
+
+`test/build_fixtures.sh` compiles each `test/fixtures/libs/**` library *in
+place* (unlike `test/run_test.sh`, which deliberately compiles into an
+ephemeral temp dir so the repo stays clean during CI) — safe to re-run any
+time, e.g. after editing a fixture library. `_CoqProject` has matching `-R`
+entries for all of them. Confirmed end-to-end by driving `rocq repl` with
+every `-R` flag from `_CoqProject`, piping in `test/fixtures/Main.v`, and
+getting the real clash-detection grid back.
+
+One known cosmetic wrinkle from doing this: `-R test/fixtures/libs MyDev`
+is recursive, and several unrelated fixture families
+(`multilevel/`, `three/`, `mutual/`, `construct/`, `excldemo/`,
+`exclwinner/`) happen to live as subdirectories of that same
+`test/fixtures/libs/` — so opening `Main.v` prints a handful of harmless
+`overriding-logical-loadpath` warnings as those subdirectories' own
+`-R` entries (listed after `MyDev`'s in `_CoqProject`) correctly take
+precedence. Doesn't affect correctness (confirmed: the clash-detection
+output is exactly right regardless), just noise; the real fix would be
+moving `PartA.v`/`PartB.v`/`PartC.v` into their own subdirectory to match
+every other fixture family's layout, which hasn't been done since it'd
+touch several already-tested paths in `test/run_test.sh` for a purely
+cosmetic gain.
+
 **Emacs (Proof General) and RocqIDE**: not wired up yet — see
 `Editor_planning.md` for what's already confirmed (Proof General reads
 `_CoqProject` automatically; RocqIDE's Nix packaging status is still an

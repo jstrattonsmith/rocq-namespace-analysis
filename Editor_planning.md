@@ -28,16 +28,30 @@ Done:
   process model `vsrocqtop` uses) piping in `From NamespaceAnalysis Require
   Import Loader.` + `NamespaceAnalysis Hello.`, and got the plugin-loaded
   message back.
-- **Real troubleshooting note, not just a hypothetical caveat**: Jeremy hit
-  "no Rocq available" after following the (then two-shell) instructions.
-  The most likely cause, called out in the README now: if VS Code is
-  already running, `code .` just opens a new window in the *existing*
-  process — it never inherits a shell's environment at all, regardless of
-  which shell or how many packages are in it. Full quit (Cmd+Q) before
-  `code .` is the fix. Whether that alone resolves it, or something else is
-  also wrong, hasn't been confirmed yet — the VS Code GUI session itself
-  still isn't independently verified end-to-end from here (no GUI
-  available in this environment), which remains the one unverified link.
+- **Real troubleshooting, now resolved**: Jeremy hit "no Rocq available"
+  after following the (then two-shell) instructions. The fix was the
+  full-quit-before-`code .` issue documented in the README (an already-
+  running VS Code instance doesn't inherit a newly-launched shell's
+  environment) — **confirmed working** after that. This was the one thing
+  that couldn't be verified from here (no GUI available in this
+  environment); it's now actually confirmed end-to-end, not just
+  should-work.
+- **Fixture libraries for the checked-in demo files**: `_CoqProject` alone
+  only covered `NamespaceAnalysis` itself — the top-level demo fixtures
+  (`test/fixtures/Main.v`, `MutualInductive.v`, `ConstructorClash.v`,
+  `ExcludedWinner.v`) also `Require` their own dependency libraries
+  (`MyDev`, `MutLibA`/`B`, etc.), which only ever existed compiled into
+  `test/run_test.sh`'s ephemeral temp dir. New `test/build_fixtures.sh`
+  compiles them *in place* instead (persistent), with matching `-R` entries
+  added to `_CoqProject`. Verified end-to-end by driving `rocq repl` with
+  every `_CoqProject` `-R` flag against `test/fixtures/Main.v` directly and
+  getting the real clash grid back. One cosmetic wrinkle found and
+  documented (not fixed): `-R test/fixtures/libs MyDev` is recursive and
+  overlaps with several other fixture families' own subdirectories,
+  producing harmless `overriding-logical-loadpath` warnings — see README
+  "Trying it on the checked-in fixtures" for why this wasn't restructured
+  away (would touch several already-tested `run_test.sh` paths for a purely
+  cosmetic gain).
 
 See the README's new "Editor setup" section for the actual how-to. Emacs
 and RocqIDE are still just planned (below), not wired up.

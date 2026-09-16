@@ -5,8 +5,26 @@
 # theories/ itself -- this mirrors test/run_test.sh's own
 # THEORIES="-R _build/default/theories NamespaceAnalysis" exactly. Requires
 # `dune build` to have already run at least once. See Editor_planning.md.
-#
-# Deliberately does not cover test/fixtures/: each fixture pair compiles
-# into its own transient temp-dir mapping inside run_test.sh and was never
-# meant to be edited interactively.
 -R _build/default/theories NamespaceAnalysis
+
+# Fixture *libraries* the top-level test/fixtures/*.v demo files Require --
+# e.g. test/fixtures/Main.v needs MyDev (PartA/PartB) below. Run
+# `bash test/build_fixtures.sh` once (after `dune build`) to actually
+# compile these in place; -R mappings alone don't create the .vo files.
+# test/run_test.sh doesn't use these mappings itself -- it compiles the
+# same sources into its own ephemeral temp dir instead, to keep the repo
+# clean during CI -- these exist purely so the fixtures can be opened
+# directly in an editor.
+-R test/fixtures/libs MyDev
+-R test/fixtures/libs/multilevel/deep Demo.Sub.Deep
+-R test/fixtures/libs/multilevel/other Demo.Other
+-R test/fixtures/libs/three/one LibOne
+-R test/fixtures/libs/three/two LibTwo
+-R test/fixtures/libs/three/three LibThree
+-R test/fixtures/libs/excldemo ExcludeDemo
+-R test/fixtures/libs/mutual/a MutLibA
+-R test/fixtures/libs/mutual/b MutLibB
+-R test/fixtures/libs/construct/a ConstructLibA
+-R test/fixtures/libs/construct/b ConstructLibB
+-R test/fixtures/libs/exclwinner/a ExclWinLibA
+-R test/fixtures/libs/exclwinner/b ExclWinLibB

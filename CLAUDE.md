@@ -49,7 +49,10 @@ Live/interactive editing in VS Code (VsRocq): `nix develop` already includes
 running, fully quit it first; otherwise `code .` just opens a new window in the existing process,
 which never inherits the shell's `PATH`/`OCAMLPATH`). See README "Editor setup". `_CoqProject` at
 the repo root is for this and other editor front-ends only — `dune build` doesn't read it, it's
-separate from the real build.
+separate from the real build. To open a demo fixture (`test/fixtures/Main.v` etc.) directly, run
+`bash test/build_fixtures.sh` after `dune build` first — it compiles the fixture libraries
+*in place* (persistent, unlike `test/run_test.sh`'s own ephemeral temp-dir compilation), matching
+`_CoqProject`'s `-R` entries for them.
 
 ## Architecture
 

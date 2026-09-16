@@ -185,6 +185,14 @@ own build having already run once (`make`/`dune build`/whatever it uses).
 This is Rocq's own baseline requirement for `Require`, not something this
 tool adds.
 
+**No `_CoqProject`/`Makefile` parsing.** `--dir` collects `.v` files, not
+`-R`/`-Q` mappings — you still supply those yourself, the same as
+single-file usage (there's no reusable public parser for `_CoqProject`
+exposed by the installed `rocq-runtime`; `coqdep`'s is internal, not a
+library API). Fine for a handful of sub-projects with their own known
+mappings; a genuine gap if you wanted to point this at an arbitrary
+unfamiliar project with no manual setup.
+
 **Output formats** (`--format`): `grid` (default) is the box-drawing table
 from the example above. `summary` prints one line of counts instead — no
 per-name grid — meant for a whole-corpus run where the full grid could run
@@ -193,6 +201,13 @@ to hundreds of rows:
 ```
 NamespaceAnalysis: 1523 symbol(s) in scanned domain(s), 4 clash(es) found (1 with no winner marked), 812 identifier(s) used
 ```
+
+"No winner marked" is one combined count — it doesn't distinguish a purely
+hypothetical clash (nothing among the candidates is actually imported yet)
+from the "excluded winner" case above (something *is* actually imported,
+it's just excluded). `Clash_detect.clash.winner` collapses both to `None`
+already (see its doc comment); splitting them in the summary would need a
+`Clash_detect` signature change, not done here.
 
 `json` emits a fixed, hand-serialized shape (no new dependency) for pulling
 numbers out programmatically instead of grepping terminal output:
@@ -410,14 +425,21 @@ output" below.
 ## Roadmap
 
 - File-path domain arguments (resolve a `.v` path to its module prefix).
-- `--strict` CI exit-code mode.
+- `--strict` CI exit-code mode — `--format json` (see "Batch mode") gives
+  this a firmer footing than parsing terminal output, but the exit-code flag
+  itself still isn't built.
 - A domain argument matching nothing should say so explicitly, distinct from
   a clean bill of health.
+- `_CoqProject`/`Makefile` parsing for `--dir`, so batch mode could point at
+  an arbitrary project without hand-supplied `-R`/`-Q` mappings — see "Batch
+  mode" above for why this was deliberately left out for now.
 - Filter (or at least visibly label) `Local` definitions in the clash
   candidate set — see "Known limitations" above. A `Local` member could
   still be worth surfacing (e.g. it becomes a real problem if someone later
   removes the `Local`), so labeling rather than silently dropping might be
-  the better default; needs a decision, not just an implementation.
+  the better default; needs a decision, not just an implementation. Would
+  also let `--summary`'s "no winner marked" count (see "Batch mode") split
+  out a `Local`-caused false positive from a genuine clash — it can't today.
 - `ImportAnalysis` (designed, not yet built): a different question from
   `NamespaceAnalysis` — "of everything an imported domain exports, which
   pieces does this file actually depend on," so you can tell whether a

@@ -13,8 +13,9 @@ dune build
 
 Run the full test suite. There is no per-test invocation: `test/run_test.sh` is one linear
 hand-rolled bash script (not `dune runtest` — sandboxed dune rules proved fragile for a tool
-that needs a real Rocq session with its own plugin loaded via `OCAMLPATH`) covering ~10 fixture
-sections in sequence under `set -euo pipefail`, aborting at the first failing section:
+that needs a real Rocq session with its own plugin loaded via `OCAMLPATH`) covering a growing list
+of fixture sections in sequence under `set -euo pipefail`, aborting at the first failing section
+(it also invokes `test/run_error_test.sh` automatically at the end):
 
 ```sh
 nix develop -c bash test/run_test.sh
@@ -27,11 +28,13 @@ nix develop -c dune build @doc
 # output: _build/default/_doc/_html/rocq-namespace-analysis/index.html
 ```
 
-Run the CLI directly against a `.v` file (see README "Argument reference" for full flag meanings):
+Run the CLI directly against a `.v` file, or a whole project via `--dir` (see README "Argument
+reference" and "Batch mode" for full flag meanings):
 
 ```sh
 export OCAMLPATH="$PWD/_build/install/default/lib:$OCAMLPATH"
 _build/default/cli/namespace_analysis_cli.exe -R <dir> <DirPath> --domain <DirPath> <file.v>
+_build/default/cli/namespace_analysis_cli.exe -R <dir> <DirPath> --dir <project> --format summary
 ```
 
 `test/run_test.sh`'s target fixtures (`test/fixtures/*.v`) get compiled in place, leaving
@@ -51,7 +54,10 @@ identical — `test/run_test.sh` diffs their output against each other for every
   `Require Import Loader.` installs capture.
 - **CLI** (`cli/namespace_analysis_cli.ml`): a standalone driver that loads a Rocq document like
   `coqtop -l`, installs capture *before* loading the target file (so it has none of the plugin's
-  "must import Loader first" restriction), then runs the identical engine.
+  "must import Loader first" restriction), then runs the identical engine. Batch mode (`--dir`,
+  repeatable positional files) folds `Vernac.load_vernac` over every target file into the same
+  session before analyzing once at the end — the engine itself doesn't know or care whether it's
+  looking at one file or a whole corpus.
 
 Both front ends thread through the same pipeline, one module per stage:
 
@@ -76,9 +82,12 @@ Both front ends thread through the same pipeline, one module per stage:
    for `coqdoc` get generated) to record every identifier the elaborator resolves, in memory,
    instead of to disk. This shadows real `-dump-glob` output for the rest of the compilation unit.
 
-`Report`/`Text_table` render the same result type either as `Pp.t` (plugin message panel, with
-`Pp.tag`-based emphasis) or a plain/ANSI string (CLI stdout, TTY-detected). The clash winner
-always gets a plain-text `<- used` suffix regardless of color support — never the only signal.
+`Report` renders the same result type four ways: `to_pp` (plugin message panel, `Pp.tag`-based
+emphasis via `Text_table`), `to_string` (plain/ANSI grid, CLI stdout, TTY-detected — the clash
+winner always gets a plain-text `<- used` suffix regardless of color support, never the only
+signal), `to_summary` (one line of counts, no grid, for a whole-corpus `--dir` run), and `to_json`
+(a fixed, hand-serialized shape, CLI-only, no JSON library dependency). The last two exist
+specifically because the grid doesn't scale to a hundreds-of-files batch run.
 
 Two Rocq versions are both actively supported (Nix: 9.1.1, Homebrew: 9.2.0); watch for API drift
 between them (e.g. `Flags.in_synterp_phase`'s type differs — see `src/ensure_loaded.ml`) when

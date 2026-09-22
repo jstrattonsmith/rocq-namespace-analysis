@@ -538,7 +538,11 @@ open question) and what's left to do.
   unambiguously picked the real one). Sections themselves are fine — a
   `Variable` never becomes its own symbol, it's abstracted into an extra
   argument on whatever's defined inside the section, indistinguishable from
-  an ordinary top-level definition once the section closes.
+  an ordinary top-level definition once the section closes. A real,
+  confirmed-feasible fix exists (`Declare.is_local_constant` — see
+  `case-study/corelib-stdlib/RESULTS.md`) but isn't implemented: the
+  Corelib/Stdlib case study found zero instances of this specific
+  pattern, so it wasn't prioritized over documenting it precisely.
 - **Open design question, not yet resolved**: when an excluded prefix (e.g.
   `Corelib`) happens to be the *actual current winner* of a clash, the clash
   is still reported (with only non-excluded alternatives shown) but with no

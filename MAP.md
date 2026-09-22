@@ -59,7 +59,13 @@ command) has zero examples anywhere; see the "Not built" section.
   this was "confirmed by direct testing" — true, but that testing was ad
   hoc during development, never turned into a checked-in fixture or
   `Examples.md` entry. There is currently no regression coverage for this
-  specific, real, already-diagnosed false-positive pattern.
+  specific, real, already-diagnosed false-positive pattern. **Update**: a
+  real, confirmed-feasible fix exists (`Declare.is_local_constant` —
+  investigated in depth for the Workstream 9 case study, see
+  `case-study/corelib-stdlib/RESULTS.md`) but isn't implemented — the
+  Corelib/Stdlib case study run found zero instances of this specific
+  pattern, so it wasn't prioritized. Still an open gap, now a
+  well-understood one.
 - **`--format` rejecting an unknown value.** Tested (`run_test.sh`), but
   small enough that it was never given a dedicated `Examples.md` write-up
   — noted here rather than silently treated as "covered."

@@ -715,3 +715,23 @@ README "Transitive imports and circular imports" for why circular imports
 are a non-issue for the same underlying reason (they can't compile at
 all, confirmed directly: two mutually-`Require`ing files both fail with
 "Unable to locate library ... (while searching for a .vos file)").
+
+## 16. Real-world case study: Corelib/Stdlib (Workstream 9, Pass 1)
+
+Full reproducible method + results now live in
+`case-study/corelib-stdlib/` (`METHOD.md`, `RESULTS.md`, and the raw
+`output.json`) rather than duplicated here. Headline finding: probing
+Corelib/Stdlib itself (`--include Corelib`, since it's excluded by
+default) surfaces 46 clashes among ~1,010 members, all resolved in
+0.03s. Zero are the `Local`-definition false positive this session
+investigated in depth (confirmed a real, feasible fix exists --
+`Declare.is_local_constant` -- but it wasn't implemented since this
+run gave no evidence it's actually common). Instead, 44 of the 46 are a
+different, more interesting pattern: Corelib's own `Decimal`/
+`Hexadecimal`/`Number` modules deliberately reuse the same internal names
+(`D0`-`D9`, `abs`, `norm`, `uint`, ...) as parallel, always-qualified
+namespaces -- i.e. Rocq's own standard library takes on the exact "last
+import wins" risk this tool exists to catch, as a deliberate design
+tradeoff, at scale. The other 4 (`app`, `double`, `succ`, `succ_double`)
+are more clash-shaped: a common name colliding with those modules'
+internals, one of them (`app`) with an actual current winner.

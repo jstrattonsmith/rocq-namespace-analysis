@@ -1,0 +1,391 @@
+{
+    "member_count": 1010,
+    "clashes": [
+        {
+            "name": "D0",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D0",
+                "Corelib.Init.Hexadecimal.D0"
+            ]
+        },
+        {
+            "name": "D1",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D1",
+                "Corelib.Init.Hexadecimal.D1"
+            ]
+        },
+        {
+            "name": "D2",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D2",
+                "Corelib.Init.Hexadecimal.D2"
+            ]
+        },
+        {
+            "name": "D3",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D3",
+                "Corelib.Init.Hexadecimal.D3"
+            ]
+        },
+        {
+            "name": "D4",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D4",
+                "Corelib.Init.Hexadecimal.D4"
+            ]
+        },
+        {
+            "name": "D5",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D5",
+                "Corelib.Init.Hexadecimal.D5"
+            ]
+        },
+        {
+            "name": "D6",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D6",
+                "Corelib.Init.Hexadecimal.D6"
+            ]
+        },
+        {
+            "name": "D7",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D7",
+                "Corelib.Init.Hexadecimal.D7"
+            ]
+        },
+        {
+            "name": "D8",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D8",
+                "Corelib.Init.Hexadecimal.D8"
+            ]
+        },
+        {
+            "name": "D9",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.D9",
+                "Corelib.Init.Hexadecimal.D9"
+            ]
+        },
+        {
+            "name": "Decimal",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Decimal",
+                "Corelib.Init.Number.Decimal"
+            ]
+        },
+        {
+            "name": "Hexadecimal",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Hexadecimal.Hexadecimal",
+                "Corelib.Init.Number.Hexadecimal"
+            ]
+        },
+        {
+            "name": "Neg",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Neg",
+                "Corelib.Init.Hexadecimal.Neg"
+            ]
+        },
+        {
+            "name": "Nil",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Nil",
+                "Corelib.Init.Hexadecimal.Nil"
+            ]
+        },
+        {
+            "name": "Pos",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Pos",
+                "Corelib.Init.Hexadecimal.Pos"
+            ]
+        },
+        {
+            "name": "abs",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.abs",
+                "Corelib.Init.Hexadecimal.abs"
+            ]
+        },
+        {
+            "name": "app",
+            "winner": "Corelib.Init.Datatypes.app",
+            "alternatives": [
+                "Corelib.Init.Decimal.app",
+                "Corelib.Init.Hexadecimal.app"
+            ]
+        },
+        {
+            "name": "app_int",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.app_int",
+                "Corelib.Init.Hexadecimal.app_int"
+            ]
+        },
+        {
+            "name": "del_head",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.del_head",
+                "Corelib.Init.Hexadecimal.del_head"
+            ]
+        },
+        {
+            "name": "del_head_int",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.del_head_int",
+                "Corelib.Init.Hexadecimal.del_head_int"
+            ]
+        },
+        {
+            "name": "del_tail",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.del_tail",
+                "Corelib.Init.Hexadecimal.del_tail"
+            ]
+        },
+        {
+            "name": "del_tail_int",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.del_tail_int",
+                "Corelib.Init.Hexadecimal.del_tail_int"
+            ]
+        },
+        {
+            "name": "double",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Little.double",
+                "Corelib.Init.Hexadecimal.Little.double",
+                "Corelib.Init.Nat.double"
+            ]
+        },
+        {
+            "name": "int_of_int",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.int_of_int",
+                "Corelib.Init.Number.int_of_int"
+            ]
+        },
+        {
+            "name": "nb_digits",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.nb_digits",
+                "Corelib.Init.Hexadecimal.nb_digits"
+            ]
+        },
+        {
+            "name": "norm",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.norm",
+                "Corelib.Init.Hexadecimal.norm"
+            ]
+        },
+        {
+            "name": "nzhead",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.nzhead",
+                "Corelib.Init.Hexadecimal.nzhead"
+            ]
+        },
+        {
+            "name": "nztail",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.nztail",
+                "Corelib.Init.Hexadecimal.nztail"
+            ]
+        },
+        {
+            "name": "nztail_int",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.nztail_int",
+                "Corelib.Init.Hexadecimal.nztail_int"
+            ]
+        },
+        {
+            "name": "opp",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.opp",
+                "Corelib.Init.Hexadecimal.opp"
+            ]
+        },
+        {
+            "name": "rev",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.rev",
+                "Corelib.Init.Hexadecimal.rev"
+            ]
+        },
+        {
+            "name": "revapp",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.revapp",
+                "Corelib.Init.Hexadecimal.revapp"
+            ]
+        },
+        {
+            "name": "signed_int",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.signed_int",
+                "Corelib.Init.Hexadecimal.signed_int",
+                "Corelib.Init.Number.signed_int"
+            ]
+        },
+        {
+            "name": "signed_int_beq",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.signed_int_beq",
+                "Corelib.Init.Hexadecimal.signed_int_beq",
+                "Corelib.Init.Number.signed_int_beq"
+            ]
+        },
+        {
+            "name": "signed_int_eq_dec",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.signed_int_eq_dec",
+                "Corelib.Init.Hexadecimal.signed_int_eq_dec",
+                "Corelib.Init.Number.signed_int_eq_dec"
+            ]
+        },
+        {
+            "name": "succ",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Little.succ",
+                "Corelib.Init.Hexadecimal.Little.succ",
+                "Corelib.Init.Nat.succ"
+            ]
+        },
+        {
+            "name": "succ_double",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.Little.succ_double",
+                "Corelib.Init.Hexadecimal.Little.succ_double"
+            ]
+        },
+        {
+            "name": "uint",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint",
+                "Corelib.Init.Hexadecimal.uint",
+                "Corelib.Init.Number.uint"
+            ]
+        },
+        {
+            "name": "uint_beq",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_beq",
+                "Corelib.Init.Hexadecimal.uint_beq",
+                "Corelib.Init.Number.uint_beq"
+            ]
+        },
+        {
+            "name": "uint_eq_dec",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_eq_dec",
+                "Corelib.Init.Hexadecimal.uint_eq_dec",
+                "Corelib.Init.Number.uint_eq_dec"
+            ]
+        },
+        {
+            "name": "uint_ind",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_ind",
+                "Corelib.Init.Hexadecimal.uint_ind"
+            ]
+        },
+        {
+            "name": "uint_of_uint",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_of_uint",
+                "Corelib.Init.Number.uint_of_uint"
+            ]
+        },
+        {
+            "name": "uint_rec",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_rec",
+                "Corelib.Init.Hexadecimal.uint_rec"
+            ]
+        },
+        {
+            "name": "uint_rect",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_rect",
+                "Corelib.Init.Hexadecimal.uint_rect"
+            ]
+        },
+        {
+            "name": "uint_sind",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.uint_sind",
+                "Corelib.Init.Hexadecimal.uint_sind"
+            ]
+        },
+        {
+            "name": "unorm",
+            "winner": null,
+            "alternatives": [
+                "Corelib.Init.Decimal.unorm",
+                "Corelib.Init.Hexadecimal.unorm"
+            ]
+        }
+    ],
+    "used": [
+        {
+            "identifier": "eq_refl",
+            "defined_in": "Corelib.Init.Logic"
+        },
+        {
+            "identifier": "plus",
+            "defined_in": "Corelib.Init.Peano"
+        }
+    ]
+}

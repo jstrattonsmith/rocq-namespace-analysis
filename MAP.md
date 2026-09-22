@@ -29,6 +29,7 @@ command) has zero examples anywhere; see the "Not built" section.
 | `--format grid\|summary\|json` | `Examples.md` §7 | `batch/{One,Two}.v` | "`--format` summary/json agree..." | `src/report.ml` (`to_summary`, `to_json`) |
 | Large-report note (grid past 100 clashes points at `--format`) | `Examples.md` §14 | generated at test-time, not checked in | "large-report note" / "...but not for a small report" | `src/report.ml` (`size_note`) |
 | Transitive ("chained") imports found correctly, no special-case code | `Examples.md` §15 | `ChainedImport.v`/`Cli.v` | "transitive imports" | none needed — `Global.env ()`/`Nametab` are already fully-resolved |
+| `Local`-definition false positive: labeled `(Local)`, not silently dropped | `Examples.md` §17 | `LocalFalsePositive.v`/`Cli.v` | "Local false positive" (both sections, incl. the `Hypothetical.v` non-regression check) | `src/report.ml` (`is_local_member`, via `Declare.is_local_constant`) |
 
 ## Robustness / error handling
 
@@ -55,17 +56,6 @@ command) has zero examples anywhere; see the "Not built" section.
 
 ## Documented but not backed by a fixture (real gaps, not yet closed)
 
-- **`Local`-definition false positive.** README "Known limitations" says
-  this was "confirmed by direct testing" — true, but that testing was ad
-  hoc during development, never turned into a checked-in fixture or
-  `Examples.md` entry. There is currently no regression coverage for this
-  specific, real, already-diagnosed false-positive pattern. **Update**: a
-  real, confirmed-feasible fix exists (`Declare.is_local_constant` —
-  investigated in depth for the Workstream 9 case study, see
-  `case-study/corelib-stdlib/RESULTS.md`) but isn't implemented — the
-  Corelib/Stdlib case study run found zero instances of this specific
-  pattern, so it wasn't prioritized. Still an open gap, now a
-  well-understood one.
 - **`--format` rejecting an unknown value.** Tested (`run_test.sh`), but
   small enough that it was never given a dedicated `Examples.md` write-up
   — noted here rather than silently treated as "covered."

@@ -224,10 +224,13 @@ false positive** — not what was originally expected going in:
 
 **Conclusion on the `Local` investigation** (per the conditional plan):
 the premise "if this shows up a lot" is **not met** — it shows up zero
-times in this run. `src/clash_detect.ml`'s `Local` fix (a real, confirmed-
-feasible API, `Declare.is_local_constant` — see the plan) is not
-implemented as part of this pass as a result. The finding worth carrying
-into the talk instead is the parallel-submodule pattern above, which is a
-different and arguably more interesting story: even Rocq's own standard
-library both hits this exact hazard class *and* accepts it as a design
+times in this run. The fix (`Declare.is_local_constant`, confirmed
+feasible during this pass's investigation) was not prioritized on this
+run's own evidence alone — **implemented anyway per Jeremy's explicit
+follow-up direction** (`src/report.ml`'s `is_local_member`; see
+`Examples.md` section 17 for the worked example and confirmation that the
+existing hypothetical-domain feature isn't regressed). The finding worth
+carrying into the talk regardless is the parallel-submodule pattern above,
+which is a different and arguably more interesting story: even Rocq's own
+standard library both hits this exact hazard class *and* accepts it as a design
 tradeoff, rather than avoiding it.

@@ -11,6 +11,30 @@ let make ~member_count ~clashes ~used = { member_count; clashes; used }
 
 let qualified_name gr = Libnames.string_of_path (Nametab.path_of_global gr)
 
+(* `Local` (outside a section) only blocks a definition's short-name
+   binding on Import -- it's still fully-qualified-accessible, and still
+   shows up as a domain member (Environ.fold_constants retains it), so it
+   was previously reported as an indistinguishable clash candidate even
+   though Rocq itself would never actually resolve a bare short name to
+   it. Declare.is_local_constant answers this directly and correctly,
+   without ever consulting Nametab/short-name-visibility state -- it's
+   populated at `load_constant` time (fires on Require), not at
+   `Import`/`Export` time, so a genuinely Local constant is flagged
+   regardless of whether its library is ever Import-ed, while an ordinary
+   constant in a Require-only "hypothetical" domain (see Ensure_loaded,
+   test/fixtures/Hypothetical.v) is correctly never flagged, Import status
+   notwithstanding -- confirmed directly, not assumed (see
+   case-study/corelib-stdlib/RESULTS.md and test/fixtures/LocalFalsePositive.v).
+   Inductives/constructors don't need an analogous check: `Local` outside
+   a section isn't a distinct state Rocq's inductive/constructor machinery
+   tracks in the first place (no discharge/locality field on that AST
+   node at all). *)
+let is_local_member = function
+  | GlobRef.ConstRef c -> Declare.is_local_constant c
+  | GlobRef.IndRef _ | GlobRef.ConstructRef _ | GlobRef.VarRef _ -> false
+
+let local_marker = " (Local)"
+
 let clash_row (c : Clash_detect.clash) =
   let all =
     match c.winner with
@@ -24,11 +48,12 @@ let clash_row (c : Clash_detect.clash) =
   in
   let entries =
     all
-    |> List.map (fun gr -> (qualified_name gr, is_winner gr))
-    |> List.sort (fun (a, _) (b, _) -> String.compare a b)
-    |> List.map (fun (text, is_winner) ->
-           { Text_table.text = (if is_winner then text ^ Text_table.plain_marker else text);
-             emphasized = is_winner })
+    |> List.map (fun gr -> (qualified_name gr, is_winner gr, is_local_member gr))
+    |> List.sort (fun (a, _, _) (b, _, _) -> String.compare a b)
+    |> List.map (fun (text, is_winner, is_local) ->
+           let text = if is_local then text ^ local_marker else text in
+           let text = if is_winner then text ^ Text_table.plain_marker else text in
+           { Text_table.text; emphasized = is_winner })
   in
   { Text_table.label = Id.to_string c.name; entries }
 

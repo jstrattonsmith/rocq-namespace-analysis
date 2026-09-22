@@ -35,7 +35,7 @@ split_blocks() {
 echo "==> compiling fixture libraries"
 mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
   "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb" \
-  "$WORK/chaina" "$WORK/chainb" "$WORK/chaind"
+  "$WORK/chaina" "$WORK/chainb" "$WORK/chaind" "$WORK/localfpa" "$WORK/localfpb"
 cp test/fixtures/libs/mydev/PartA.v test/fixtures/libs/mydev/PartB.v test/fixtures/libs/mydev/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
@@ -52,6 +52,8 @@ cp test/fixtures/libs/exclwinner/b/ExclWinB.v "$WORK/exclwinb/"
 cp test/fixtures/libs/chain/a/ChainA.v "$WORK/chaina/"
 cp test/fixtures/libs/chain/b/ChainB.v "$WORK/chainb/"
 cp test/fixtures/libs/chain/d/ChainD.v "$WORK/chaind/"
+cp test/fixtures/libs/localfp/a/LocalA.v "$WORK/localfpa/"
+cp test/fixtures/libs/localfp/b/LocalB.v "$WORK/localfpb/"
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartC.v" >/dev/null
@@ -70,6 +72,8 @@ rocq compile -R "$WORK/exclwinb" ExclWinLibB "$WORK/exclwinb/ExclWinB.v" >/dev/n
 rocq compile -R "$WORK/chaina" ChainA "$WORK/chaina/ChainA.v" >/dev/null
 rocq compile -R "$WORK/chaina" ChainA -R "$WORK/chainb" ChainB "$WORK/chainb/ChainB.v" >/dev/null
 rocq compile -R "$WORK/chaind" ChainD "$WORK/chaind/ChainD.v" >/dev/null
+rocq compile -R "$WORK/localfpa" LocalLibA "$WORK/localfpa/LocalA.v" >/dev/null
+rocq compile -R "$WORK/localfpb" LocalLibB "$WORK/localfpb/LocalB.v" >/dev/null
 
 # ---------------------------------------------------------------------------
 echo "==> base fixture: native plugin command (Main.v)"
@@ -254,6 +258,41 @@ echo "==> transitive imports, CLI parity"
   --domain ChainA --domain ChainD \
   test/fixtures/ChainedImportCli.v > "$WORK/chain_cli.txt"
 diff -u "$WORK/chain_plugin.txt" "$WORK/chain_cli.txt"
+
+# ---------------------------------------------------------------------------
+echo "==> Local false positive (LocalFalsePositive.v): a genuine Local candidate is labeled, not silently dropped"
+# LocalLibA's `helper` is declared Local -- still fully-qualified-accessible
+# and still shows up as a domain member, but Rocq would never actually
+# resolve a bare `helper` to it. Declare.is_local_constant (src/report.ml)
+# labels it "(Local)" instead of showing it as an indistinguishable
+# candidate; confirmed here that LocalLibB's real, non-Local `helper`
+# remains the correctly-marked winner.
+rocq compile $THEORIES -R "$WORK/localfpa" LocalLibA -R "$WORK/localfpb" LocalLibB \
+  test/fixtures/LocalFalsePositive.v > "$WORK/localfp_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/localfp_out.txt" > "$WORK/localfp_plugin.txt"
+grep -q "LocalLibA.LocalA.helper (Local)" "$WORK/localfp_plugin.txt"
+grep -q "LocalLibB.LocalB.helper <- used" "$WORK/localfp_plugin.txt"
+if grep -q "LocalLibB.LocalB.helper (Local)" "$WORK/localfp_plugin.txt"; then
+  echo "FAIL: the real, non-Local helper was incorrectly labeled Local"
+  exit 1
+fi
+
+echo "==> Local false positive, CLI parity"
+"$CLI" -R "$WORK/localfpa" LocalLibA -R "$WORK/localfpb" LocalLibB \
+  --domain LocalLibA --domain LocalLibB \
+  test/fixtures/LocalFalsePositiveCli.v > "$WORK/localfp_cli.txt"
+diff -u "$WORK/localfp_plugin.txt" "$WORK/localfp_cli.txt"
+
+echo "==> Local false positive: the existing hypothetical-domain candidate is NOT mislabeled (the regression this fix must not cause)"
+# MyDev.PartC.K (Hypothetical.v) is Require-only, never Import-ed -- it
+# looks identical to a Local candidate from Nametab's point of view (no
+# short-name binding either way). This is the one thing the fix has to
+# get right: PartC.K must never be labeled "(Local)".
+rocq compile $THEORIES -R "$WORK/mydev" MyDev test/fixtures/Hypothetical.v > "$WORK/hyp_local_check.txt" 2>&1
+if grep -q "MyDev.PartC.K (Local)" "$WORK/hyp_local_check.txt"; then
+  echo "FAIL: the hypothetical-domain candidate was incorrectly labeled Local"
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 echo "==> batch mode (--dir): aggregates occurrences across multiple target files into one report"

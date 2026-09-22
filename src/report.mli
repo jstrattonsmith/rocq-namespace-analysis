@@ -20,7 +20,16 @@ val make :
     [to_summary]/[to_json] via the CLI's [--format] flag (confirmed: 1,000
     clashes alone render as a 3,007-line table) -- the plugin has no
     [--format] of its own, so the note always points at the CLI regardless
-    of which front end is showing it. *)
+    of which front end is showing it.
+
+    Both also append [" (Local)"] to any candidate declared [Local]
+    (outside a section) -- such a candidate is a domain member (still
+    fully-qualified-accessible, so [Environ.fold_constants] retains it)
+    but Rocq would never actually resolve a bare short name to it, so it's
+    labeled rather than shown as an indistinguishable clash risk (see
+    [Declare.is_local_constant] in [report.ml]). [to_summary]/[to_json] do
+    not include this label, matching the large-report note above in being
+    grid-only. *)
 val to_pp : t -> Pp.t
 
 (** [color] (default [false]) additionally wraps the winning candidate in

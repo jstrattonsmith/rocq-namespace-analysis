@@ -735,3 +735,74 @@ import wins" risk this tool exists to catch, as a deliberate design
 tradeoff, at scale. The other 4 (`app`, `double`, `succ`, `succ_double`)
 are more clash-shaped: a common name colliding with those modules'
 internals, one of them (`app`) with an actual current winner.
+
+**Update**: the `Local` fix described as "confirmed feasible but not
+implemented" above has since been implemented -- see section 17 below.
+
+## 17. Fixing the `Local`-definition false positive
+
+Jeremy asked to implement the fix regardless of the case study's own
+"not common enough to prioritize" finding above. `Declare.is_local_constant
+: Names.Constant.t -> bool` (already available via `src/dune`'s existing
+`rocq-runtime.vernac` dependency, no new dependency needed) reads a set
+populated at `load_constant` time (fires on `Require`), not at
+`Import`/`Export` time -- so a genuinely `Local` constant is flagged
+regardless of whether its library is ever `Import`ed, while an ordinary
+constant in a `Require`-only "hypothetical" domain is correctly never
+flagged. This is exactly what avoids the regression risk identified while
+planning this fix: the hypothetical-domain feature (`Hypothetical.v`)
+looks identical to a `Local` definition from `Nametab`'s point of view
+(no short-name binding either way) but must not be mislabeled.
+
+Design: label, don't silently drop, matching the Roadmap's own stated
+preference and this project's general "show more information, not less"
+philosophy (`is_local_member` in `src/report.ml`, purely a rendering
+concern -- `Clash_detect`'s candidate set is unchanged).
+
+`test/fixtures/libs/localfp/{a,b}/`:
+`LocalA.v`: `Local Definition helper := 1.`
+`LocalB.v`: `Definition helper := 2.`
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From LocalLibA Require Import LocalA.
+From LocalLibB Require Import LocalB.
+
+Check helper.
+
+NamespaceAnalysis LocalLibA LocalLibB.
+```
+
+```
+NamespaceAnalysis: 2 symbol(s) in scanned domain(s)
+Clashes:
+┌────────────┬─────────────────────────────────┐
+│ Short name │ Candidates (alphabetical)       │
+├────────────┼─────────────────────────────────┤
+│ helper     │ LocalLibA.LocalA.helper (Local) │
+│            │ LocalLibB.LocalB.helper <- used │
+└────────────┴─────────────────────────────────┘
+Used identifiers:
+┌────────────┬──────────────────┐
+│ Identifier │ Defined in       │
+├────────────┼──────────────────┤
+│ helper     │ LocalLibB.LocalB │
+└────────────┴──────────────────┘
+```
+
+**Confirmed the regression risk was actually avoided**, not just
+theoretically: re-ran the existing `Hypothetical.v` fixture (`MyDev.PartC.K`,
+`Require`-only, never `Import`ed) after this change and confirmed it is
+*not* labeled `(Local)` -- exactly the distinction this fix has to get
+right. Confirmed load-bearing by reverting `src/report.ml` and watching
+the new `run_test.sh` sections fail.
+
+Scoped to constants only (`GlobRef.ConstRef`) -- confirmed unnecessary for
+inductives/constructors: `Local` outside a section isn't a distinct state
+Rocq's inductive/constructor machinery tracks at all (no discharge/
+locality field on that AST node).
+
+`--format json`/`--format summary` deliberately don't include this label
+(same "grid-only" precedent as the large-report note) -- a JSON consumer
+wanting Local-detection would need the equivalent check independently for
+now.

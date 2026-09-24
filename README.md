@@ -678,8 +678,10 @@ open question) and what's left to do.
   public API doesn't offer (see "Known limitations"). Reading Rocq's private
   name-table state would work but could break silently between Rocq
   versions; the cleaner route is an upstream request for a public function
-  returning a name's whole stack of candidates (which `Locate` could also
-  use to say what shadows what).
+  returning the shadowed entries under a name as written — which
+  candidates are import-visible as that name, not just which ones exist
+  (the latter is already public via `Nametab.locate_all`). `Locate` could
+  use it too, to say what shadows what.
 - `--strict` CI exit-code mode — `--format json` (see "Output formats") gives
   this a firmer footing than parsing terminal output, but the exit-code flag
   itself still isn't built.

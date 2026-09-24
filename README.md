@@ -675,7 +675,11 @@ open question) and what's left to do.
   at a time for now.
 - Split ambiguous uses into "imported, then shadowed" and "loaded but not
   imported" — needs a way to see `Nametab`'s shadowed entries that the
-  public API doesn't offer (see "Known limitations").
+  public API doesn't offer (see "Known limitations"). Reading Rocq's private
+  name-table state would work but could break silently between Rocq
+  versions; the cleaner route is an upstream request for a public function
+  returning a name's whole stack of candidates (which `Locate` could also
+  use to say what shadows what).
 - `--strict` CI exit-code mode — `--format json` (see "Output formats") gives
   this a firmer footing than parsing terminal output, but the exit-code flag
   itself still isn't built.

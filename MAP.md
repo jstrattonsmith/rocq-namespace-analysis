@@ -34,6 +34,13 @@ command) has zero examples anywhere; see the "Not built" section.
 | Transitive ("chained") imports found correctly, no special-case code | `Examples.md` §15 | `ChainedImport.v`/`Cli.v` | "transitive imports" | none needed — `Global.env ()`/`Nametab` are already fully-resolved |
 | `Local`-definition false positive: labeled `(Local)`, not silently dropped | `Examples.md` §17 | `LocalFalsePositive.v`/`Cli.v` | "Local false positive" (both sections, incl. the `Hypothetical.v` non-regression check) | `src/report.ml` (`is_local_member`, via `Declare.is_local_constant`) |
 
+## Case studies (real corpora, not fixtures)
+
+| Corpus | Example | Artifacts | Headline |
+|---|---|---|---|
+| Corelib/Stdlib (Workstream 9, Pass 1) | `Examples.md` §16 | `case-study/corelib-stdlib/` | 46 clashes among ~1,010 members; `Decimal`/`Hexadecimal`/`Number` reuse names by design |
+| Iris 4.5.0 (Workstream 9, Pass 2) | `Examples.md` §19 | `case-study/iris/` | 2,251 ambiguous use sites in 178 files: 873 real shadowing, 1,308 latent, 70 local-only; mostly deliberate layering |
+
 ## Robustness / error handling
 
 | Feature | Example | Fixture(s) | Test | Implementation |

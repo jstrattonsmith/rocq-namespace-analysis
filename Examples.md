@@ -974,3 +974,21 @@ restore and a green re-run:
 - the old shared-session batch design → self-clashes and "dup already
   exists" (above);
 - turning off use-site judgment → the golden `report.txt` diff fails.
+
+## 19. Real-world case study: Iris 4.5.0 (Workstream 9, Pass 2)
+
+Full reproducible method + results live in `case-study/iris/`
+(`METHOD.md`, `RESULTS.md`, `triage.py`, `import_probe.patch`, and the
+generated `triage_output.txt`, `sites.tsv`, `output.json`), not duplicated
+here. Headline: all 178 files of Iris, one process each, in about 3.5
+minutes; **2,251 ambiguous use sites**, which a separate throwaway probe
+splits into 873 real shadowing, 1,308 latent and 70 local-only (checked by
+hand on a 30-site sample). Almost all the real shadowing is deliberate
+layering (heap_lang's concrete `val`/`expr`/`fill` over the generic language
+interface: 601 sites); the talk-worthy cases reuse one name for different
+concepts (`logatom_lock`'s `Free`/`state`, `nsteps`, stdpp's two
+`set_bind_singleton` lemmas). `ownp.v` shows the per-line judgment
+mattering in real code: `state` means `language.state` until a
+`Section`-scoped `Import ectx_language`, and `ectx_language.state` inside
+it. The `(Local)` label (§17) fires 596 times on Iris's sealing idiom.
+

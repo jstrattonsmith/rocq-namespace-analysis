@@ -1,0 +1,56 @@
+files analyzed: 178, failed: 0
+ambiguous use sites: 2251 (grouped rows: 765)
+files with >= 1 ambiguous use site: 127
+distinct names as written: 291
+top files: [('iris/heap_lang/lang.v', 164), ('iris/base_logic/bi.v', 112), ('iris/bi/big_op.v', 111), ('iris/heap_lang/proph_erasure.v', 109), ('iris/heap_lang/proofmode.v', 86), ('iris/heap_lang/primitive_laws.v', 80), ('iris/si_logic/bi.v', 74), ('iris/proofmode/environments.v', 68)]
+shadowed: 873  latent: 1308  local-only: 70
+unknown-verdict modules (all checked never imported): 30
+    Stdlib.Arith.PeanoNat.Nat.Private_OrderTac.IsTotal
+    Stdlib.Arith.PeanoNat.Nat.Private_OrderTac.Tac
+    Stdlib.Arith.PeanoNat.Nat.Private_Tac
+    Stdlib.NArith.BinNat.N.Private_OrderTac.IsTotal
+    Stdlib.NArith.BinNat.N.Private_OrderTac.Tac
+    Stdlib.NArith.BinNat.N.Private_Tac
+    Stdlib.NArith.BinNatDef.N
+    Stdlib.NArith.Nnat.N2Nat
+    Stdlib.NArith.Nnat.Nat2N
+    Stdlib.PArith.BinPos.Pos
+    Stdlib.PArith.BinPos.Pos.Private_Tac
+    Stdlib.PArith.BinPosDef.Pos
+    Stdlib.PArith.POrderedType.PositiveOrder
+    Stdlib.PArith.POrderedType.PositiveOrder.TO
+    Stdlib.PArith.POrderedType.Positive_as_DT
+    Stdlib.PArith.POrderedType.Positive_as_DT.Private_Tac
+    Stdlib.PArith.POrderedType.Positive_as_OT
+    Stdlib.PArith.POrderedType.Positive_as_OT.Private_Tac
+    Stdlib.PArith.Pnat.SuccNat2Pos
+    Stdlib.Vectors.Vector
+    Stdlib.Vectors.VectorDef
+    Stdlib.Vectors.VectorSpec
+    Stdlib.ZArith.BinInt.Z.Private_OrderTac.IsTotal
+    Stdlib.ZArith.BinInt.Z.Private_OrderTac.Tac
+    Stdlib.ZArith.BinInt.Z.Private_Tac
+    Stdlib.ZArith.BinIntDef.Z
+    Stdlib.ZArith.Znat.Z2N
+    Stdlib.ZArith.Znat.Z2Nat
+    iris.base_logic.lib.iprop.gFunctors
+    iris.proofmode.sel_patterns.sel_pat
+shadowed sites by pattern:
+    601  language interface shadowed by an instance or refinement
+     95  heap_lang library: implementation over interface
+     87  logic layering (model/BI/restate modules, BI over stdpp)
+     36  stdpp replacing Stdlib
+     30  other (listed individually)
+     24  step-index specialization over the generic OFE/CMRA lemma
+other patterns:
+     6  Free: iris.heap_lang.lib.logatom_lock.Free over iris.heap_lang.lang.heap_lang.Free
+     5  nsteps: iris.program_logic.language.nsteps over stdpp.relations.nsteps
+     3  lt_wf: iris.algebra.stepindex.SIdx.sidx.lt_wf over Stdlib.Arith.Wf_nat.lt_wf
+     3  state: iris.heap_lang.lib.logatom_lock.state over iris.heap_lang.lang.heap_lang.state, iris.program_logic.ectx_language.state, iris.program_logic.ectxi_language.state, iris.program_logic.language.state
+     3  fresh: iris.heap_lang.locations.Loc.fresh over stdpp.base.fresh
+     2  lookup_ne: iris.algebra.gmap.ofe.lookup_ne over stdpp.fin_maps.lookup_ne
+     2  set_bind_singleton: stdpp.sets.set_bind_singleton over stdpp.fin_sets.set_bind_singleton
+     2  faa_atomic: iris.heap_lang.lib.atomic_heap.faa_atomic over iris.heap_lang.class_instances.faa_atomic
+     2  join: iris.heap_lang.lib.spawn.join over stdpp.base.join
+     2  nsteps: iris.program_logic.language.language.nsteps over stdpp.relations.nsteps
+latent sites' alternatives by root library: [('Stdlib', 3341), ('iris', 588), ('stdpp', 240)]

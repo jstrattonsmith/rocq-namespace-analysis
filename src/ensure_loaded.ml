@@ -39,6 +39,19 @@
 
 let already_required : (Names.DirPath.t, unit) Hashtbl.t = Hashtbl.create 16
 
+(* Every library this module itself caused to be loaded -- [dp] plus any
+   dependency of it that wasn't already loaded -- as opposed to anything the
+   analyzed file loaded on its own. Glob_capture's use-site snapshot leaves
+   these out: a use site should be judged against the file's own namespace,
+   not against a side effect of this tool (e.g. an earlier in-file
+   `NamespaceAnalysis <hypothetical domain>` command, which would otherwise
+   make every later use in the plugin see candidates the CLI never would). *)
+let tool_loaded : (Names.DirPath.t, unit) Hashtbl.t = Hashtbl.create 16
+
+let loaded_by_tool dp =
+  Hashtbl.mem tool_loaded dp
+  || Hashtbl.fold (fun lib () acc -> acc || Libnames.is_dirpath_prefix_of lib dp) tool_loaded false
+
 let is_loaded dp =
   Hashtbl.mem already_required dp
   || List.exists (Names.DirPath.equal dp) (Library.loaded_libraries ())
@@ -68,6 +81,11 @@ let ensure_required dp =
     | Ok physical_path -> (
       match Library.intern_from_file physical_path with
       | Ok lib, _provenance ->
+        let before = Library.loaded_libraries () in
         Library.require_library_from_dirpath [ lib ];
-        Hashtbl.replace already_required dp ()
+        Hashtbl.replace already_required dp ();
+        Hashtbl.replace tool_loaded dp ();
+        List.iter
+          (fun l -> if not (List.exists (Names.DirPath.equal l) before) then Hashtbl.replace tool_loaded l ())
+          (Library.loaded_libraries ())
       | Error iexn, _provenance -> Exninfo.iraise iexn)

@@ -27,13 +27,21 @@ Usable two ways from a single shared analysis engine:
     MyFile.v
   ```
 
-Both report, for the given domain(s) (library/module prefixes, in the same
-style as `Print Namespace`):
+Both report three things:
 
-1. Every short name with more than one visible candidate definition (a
-   clash), as a grid — short name in column 1, every candidate alphabetically
-   in column 2, with the winner marked.
-2. Every identifier the file actually uses, resolved to its fully-qualified
+1. **Ambiguous uses** — every name the file actually used whose written form
+   had more than one candidate *at the point it was used*, with what it
+   resolved to there and what else it could have meant. This is the
+   file-level lint: each use is judged against the namespace as it stood on
+   that line, so a `Section`/`Module`-scoped `Import`, or a later `Import`
+   that changes what the same name means further down, is accounted for.
+2. **Clashes** — for the given domain(s) (library/module prefixes, in the
+   same style as `Print Namespace`), every short name with more than one
+   candidate definition in the namespace *at the analysis point* (where the
+   `NamespaceAnalysis` command sits; the end of the file for the CLI), as a
+   grid, with the current winner marked. This is where "what if I also
+   imported library X?" questions get answered.
+3. Every identifier the file actually uses, resolved to its fully-qualified
    defining location.
 
 A related but distinct command, `ImportAnalysis`, is planned as a follow-up
@@ -41,22 +49,72 @@ A related but distinct command, `ImportAnalysis`, is planned as a follow-up
 
 ## Example output
 
+For `test/fixtures/UseSite.v`, where `UseLibA.UseA` and `UseLibB.UseB` both
+define `x`:
+
+```coq
+(* 1 *) From NamespaceAnalysis Require Import Loader.
+(* 2 *) From UseLibA Require Import UseA.
+(* 3 *) From UseLibB Require UseB.
+(* 4 *)
+(* 5 *) Check x.
+(* 6 *) Section S.
+(* 7 *)   Import UseLibB.UseB.
+(* 8 *)   Check x.
+(* 9 *) End S.
+(*10 *) Check x.
+(*11 *) Check UseLibB.UseB.x.
+(*12 *) Import UseLibB.UseB.
+(*13 *) Check x.
+(*14 *)
+(*15 *) NamespaceAnalysis UseLibA UseLibB.
 ```
-NamespaceAnalysis: 1 symbol(s) in scanned domain(s)
-Clashes:
-┌────────────┬───────────────────────────────────┐
-│ Short name │ Candidates (alphabetical)         │
-├────────────┼───────────────────────────────────┤
-│ Gadget     │ Demo.Other.Sibling.Gadget <- used │
-│            │ Demo.Sub.Deep.DeepOne.Gadget      │
-└────────────┴───────────────────────────────────┘
+
+```
+NamespaceAnalysis: 2 symbol(s) in scanned domain(s)
+Ambiguous uses (judged where each name was used):
+┌─────────────────┬─────────────────────────────────────────┐
+│ Name as written │ Candidates at that point (alphabetical) │
+├─────────────────┼─────────────────────────────────────────┤
+│ x (lines 5, 10) │ UseLibA.UseA.x <- used                  │
+│                 │ UseLibB.UseB.x                          │
+├─────────────────┼─────────────────────────────────────────┤
+│ x (lines 8, 13) │ UseLibA.UseA.x                          │
+│                 │ UseLibB.UseB.x <- used                  │
+└─────────────────┴─────────────────────────────────────────┘
+Clashes (namespace state at the analysis point):
+┌────────────┬───────────────────────────┐
+│ Short name │ Candidates (alphabetical) │
+├────────────┼───────────────────────────┤
+│ x          │ UseLibA.UseA.x            │
+│            │ UseLibB.UseB.x <- used    │
+└────────────┴───────────────────────────┘
 Used identifiers:
-┌────────────┬────────────────────┐
-│ Identifier │ Defined in         │
-├────────────┼────────────────────┤
-│ Gadget     │ Demo.Other.Sibling │
-└────────────┴────────────────────┘
+┌────────────┬──────────────┐
+│ Identifier │ Defined in   │
+├────────────┼──────────────┤
+│ x          │ UseLibA.UseA │
+├────────────┼──────────────┤
+│ x          │ UseLibB.UseB │
+├────────────┼──────────────┤
+│ x          │ UseLibA.UseA │
+├────────────┼──────────────┤
+│ x          │ UseLibB.UseB │
+├────────────┼──────────────┤
+│ x          │ UseLibB.UseB │
+└────────────┴──────────────┘
 ```
+
+The two grids answer different questions, from different moments. The
+Clashes grid is a snapshot at line 15, where `x` means `UseLibB.UseB.x`, so
+on its own it would be wrong about lines 5 and 10. The Ambiguous uses grid
+shows what actually happened on each line: `UseLibA.UseA.x` on line 5;
+`UseLibB.UseB.x` on line 8, inside the section that imports it; `UseLibA.UseA.x`
+again on line 10, because the section's `Import` ended with `End S`; and
+`UseLibB.UseB.x` on line 13, after the file-level `Import`. Line 11 writes the
+fully qualified name, which has only one candidate, so it's not reported.
+Uses that saw the same winner and the same alternatives are grouped into
+one row.
 
 The winner (`<- used`) is always marked with that plain-text arrow regardless
 of terminal support, and *additionally* bold+colored when the CLI's stdout is
@@ -98,9 +156,9 @@ name).
 | Domains | `--domain <dirpath>` (repeatable) | bare space-separated list, e.g. `NamespaceAnalysis MyDev.PartA MyDev.PartB.` | Which library/module prefixes to scan. **0** domains = everything currently imported (`Library.loaded_libraries`, including the auto-loaded `Corelib` prelude). **1** domain = just that prefix (and anything nested under it). **N** domains = the union — and this list only controls what gets *probed*; a clash is still reported even against a candidate from an unnamed library (see "Clash scope" below). A domain that isn't `Require`d yet is auto-loaded on the spot (see "Checking a domain you haven't imported yet"). |
 | Exclude | `--exclude <dirpath>` (repeatable) | `: Excluding <dirpath>...` clause | Hide candidates under this prefix from the report. `Corelib` is excluded by default. |
 | Include | `--include <dirpath>` (repeatable) | `: Including <dirpath>...` clause | Un-hide a prefix — overrides both the `Corelib` default and any `--exclude`. |
-| Target file(s) | positional (repeatable), must not start with `-` | *(implicit — the file you're compiling)* | The `.v` file(s) to analyze — all get loaded into one Rocq session, then analyzed together as a single report. CLI-only; the native command always analyzes the file it's running in. |
-| Directory | `--dir <path>` (repeatable, CLI-only) | *(n/a)* | Recursively add every `*.v` under `path` (sorted per directory for determinism), appended after any explicit target files. See "Batch mode" below. |
-| Output format | `--format <mode>` (CLI-only) | *(n/a)* | `grid` (default, the box-drawing table), `summary` (one line of counts, no per-name grid), or `json` (a fixed machine-readable shape — see "Batch mode" below). |
+| Target file(s) | positional (repeatable), must not start with `-` | *(implicit — the file you're compiling)* | The `.v` file(s) to analyze. Each is elaborated under its real logical name, derived from the `-R`/`-Q` mappings exactly as `rocq compile` does it (an explicit `-top` still wins). With 2+ files, each is analyzed on its own, in its own process — see "Batch mode" below. CLI-only; the native command always analyzes the file it's running in. |
+| Directory | `--dir <path>` (repeatable, CLI-only) | *(n/a)* | Shorthand for a file list: recursively adds every `*.v` under `path` (sorted per directory for determinism) as a target file, after any explicit ones. See "Batch mode" below. |
+| Output format | `--format <mode>` (CLI-only) | *(n/a)* | `grid` (default, the box-drawing tables), `summary` (one line of counts, no per-name grid), or `json` (a fixed machine-readable shape — see "Output formats" below). |
 
 Native-command syntax note: `Excluding`/`Including` clauses need a literal
 `:` before them (`NamespaceAnalysis MyDev.PartA : Excluding Corelib.`, not a
@@ -138,6 +196,11 @@ A clash reported this way names the domain's candidate as non-winning
 (nothing not-yet-imported can be the actual current winner); if two purely
 hypothetical domains would clash *with each other*, the report says so with
 no winner at all, since nothing among the candidates is actually imported.
+A hypothetical domain only ever shows up in the Clashes grid: libraries the
+tool loaded itself are never counted as candidates in Ambiguous uses, since
+the file never loaded them (without this, an earlier in-file
+`NamespaceAnalysis` command would change what later uses in the same file
+report).
 
 Caveat: a domain argument has always been allowed to be a *namespace prefix*
 with no exact compiled library of its own (e.g. plain `MyDev` matching both
@@ -186,47 +249,73 @@ library, its dependency graph is guaranteed acyclic.
 
 ## Batch mode
 
-CLI-only. Point it at a whole project instead of one file:
+CLI-only. Give it several files, or a whole directory:
 
 ```sh
-namespace-analysis -R path/to/libs MyDev --dir path/to/project --format summary
+namespace-analysis -R path/to/project MyDev --domain MyDev --dir path/to/project --format summary
 ```
 
-Every target file (explicit positional files, then everything `--dir`
-recursively finds, sorted per directory for determinism) loads into a single
-Rocq session, in that order; the domain scan, clash detection, and report
-then run exactly once at the end, over everything loaded — not once per
-file. The engine itself needed no changes for this: `Glob_capture`'s
-occurrence buffer already accumulates across however many files get loaded
-before it's read, and `Report`/`Clash_detect` already operate on whatever's
-currently loaded, not per-file. A single positional file is just the
-one-element case of the same code path — output is byte-identical to
-before batch mode existed.
+**Each target file is analyzed on its own**, in a fresh process, exactly as
+if you'd run the CLI on that one file — the files are never loaded into a
+shared session. The parent process just collects the per-file reports and
+prints them one after another (`==> <file>` headers in the grid format),
+followed by a total:
 
-**Precondition**: like any `Require`, every file's own dependencies need to
-already be compiled to `.vo` on disk — `--dir` doesn't build anything itself,
-it re-elaborates the files you point it at, relying on the target project's
-own build having already run once (`make`/`dune build`/whatever it uses).
-This is Rocq's own baseline requirement for `Require`, not something this
-tool adds.
+```
+test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
+test/fixtures/batch/Two.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
+Total: 2 file(s) analyzed, 0 failed, 0 ambiguous use site(s)
+```
+
+Only the ambiguous-use-site count is added up across files; the other
+counts describe each file's own (overlapping) environment, so a sum of them
+wouldn't mean anything. A file that fails to elaborate is reported as
+`FAILED` (its error goes to stderr), the remaining files still run, and the
+CLI exits `1` at the end.
+
+Why not one shared session: an earlier version did exactly that, and it was
+wrong for any real project. Loading a file's source puts its definitions in
+the session a second time, next to the compiled copy that its neighbours
+`Require` — so every definition "clashed" with itself (522 of 584 symbols,
+on just Iris's `ofe.v` and `cmra.v`). Two files defining the same short name
+aborted the run ("already exists"), and one file's `Import`s leaked into the
+next file's elaboration. More fundamentally, "last import wins" is a
+per-file (really, per-line) question; a merged environment answers a
+question nobody asks. See `Examples.md` §18.
+
+**Cost**: a batch run elaborates every file, so it costs roughly what
+compiling those files costs, plus about 0.25s of process start-up and
+dependency loading per file. Measured: all 178 files of Iris 4.5.0 in 215s,
+sequentially. Judging each use site adds almost nothing (157,446 lookups
+across all of Iris took 0.08s in total).
+
+**Precondition**: like any `Require`, every file's dependencies need to
+already be compiled to `.vo` on disk — batch mode doesn't build anything
+itself, it re-elaborates the files you point it at, relying on the target
+project's own build having already run once (`make`/`dune build`/whatever it
+uses). This is Rocq's own baseline requirement for `Require`, not something
+this tool adds.
 
 **No `_CoqProject`/`Makefile` parsing.** `--dir` collects `.v` files, not
 `-R`/`-Q` mappings — you still supply those yourself, the same as
 single-file usage (there's no reusable public parser for `_CoqProject`
 exposed by the installed `rocq-runtime`; `coqdep`'s is internal, not a
-library API). Fine for a handful of sub-projects with their own known
-mappings; a genuine gap if you wanted to point this at an arbitrary
-unfamiliar project with no manual setup.
+library API). It also collects every `.v` file under the directory, which
+can be more than the project actually builds (Iris's source tree has one
+unlisted `mono_Z.v`); pass the real file list positionally when that
+matters.
 
-**Output formats** (`--format`): `grid` (default) is the box-drawing table
-from the example above. `summary` prints one line of counts instead — no
-per-name grid — meant for a whole-corpus run where the full grid could run
-to hundreds of rows:
+## Output formats
+
+`--format` (CLI-only): `grid` (default) is the box-drawing tables from the
+example above. `summary` prints one line of counts instead — no per-name
+grid:
 
 ```
-NamespaceAnalysis: 1523 symbol(s) in scanned domain(s), 4 clash(es) found (1 with no winner marked), 812 identifier(s) used
+NamespaceAnalysis: 1 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 2 identifier(s) used
 ```
 
+"Ambiguous use sites" counts distinct (name, line) pairs, not grouped rows.
 "No winner marked" is one combined count — it doesn't distinguish a purely
 hypothetical clash (nothing among the candidates is actually imported yet)
 from the "excluded winner" case above (something *is* actually imported,
@@ -234,33 +323,27 @@ it's just excluded). `Clash_detect.clash.winner` collapses both to `None`
 already (see its doc comment); splitting them in the summary would need a
 `Clash_detect` signature change, not done here.
 
-Past 100 distinct clashing names, the `grid` format itself (both front
-ends) prepends a one-line note pointing at `--format summary`/`json` —
-confirmed 1,000 clashes alone render as a 3,007-line table, so the note
-exists to surface the compact alternative before you're scrolling through
-one, not after.
+Past 100 distinct clashing names or ambiguous-use rows, the `grid` format
+itself (both front ends) prepends a one-line note pointing at `--format
+summary`/`json` — confirmed 1,000 clashes alone render as a 3,007-line
+table, so the note exists to surface the compact alternative before you're
+scrolling through one, not after.
 
 `json` emits a fixed, hand-serialized shape (no new dependency) for pulling
 numbers out programmatically instead of grepping terminal output:
 
 ```json
-{"member_count":3,"clashes":[{"name":"K","winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"used":[{"identifier":"helper","defined_in":"MyDev.PartA"},{"identifier":"K","defined_in":"MyDev.PartB"}]}
+{"member_count":3,"ambiguous_uses":[{"name":"K","lines":[6],"winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"clashes":[{"name":"K","winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"used":[{"identifier":"helper","defined_in":"MyDev.PartA"},{"identifier":"K","defined_in":"MyDev.PartB"}]}
 ```
 
-Two caveats specific to a whole-corpus batch run, not single-file usage:
-- **"Defined in" is always the *defining* library's logical path, not the
-  analyzed source file.** `Dumpglob`'s own `filepath` field (which
-  `Glob_capture`/`Report` read straight through) is
-  `Names.DirPath.to_string lib_dp` — the dirpath of wherever the identifier
-  is *defined*, regardless of which of the batch's files referenced it. Two
-  files in the same batch that each use a different identifier will show up
-  as two separate rows with their own (possibly identical) defining
-  locations, not as two different file paths.
-- **The single "winner" a batch run reports for a clashing name is an
-  artifact of `--dir`'s file-processing order** (alphabetical, for
-  determinism), not anything meaningful about the corpus's own real
-  build/import order. Trust that a clash *exists*; don't read much into
-  which candidate an aggregate run happened to mark as current winner.
+In batch mode, that per-file object is wrapped:
+`{"files":[{"file":"<path>","report":{...}} or {"file":"<path>","error":true}, ...],"failed":<n>,"ambiguous_sites":<n>}`.
+
+**"Defined in" is always the *defining* library's logical path**, not the
+analyzed source file: `Dumpglob`'s own `filepath` field (which
+`Glob_capture`/`Report` read straight through) is
+`Names.DirPath.to_string lib_dp`, the dirpath of wherever the identifier is
+*defined*.
 
 ## Why this exists
 
@@ -280,6 +363,12 @@ machinery Rocq already ships — no new parser or elaborator required:
 - **Used-identifier resolution** hijacks `Dumpglob`'s `Feedback` output mode
   (normally used to generate `.glob` files for `coqdoc`) to capture, in
   memory, every identifier the elaborator resolves.
+- **Use-site judgment** relies on that capture being synchronous: each
+  record arrives while the command using the name is still being
+  elaborated, so looking the name up (`Nametab.locate`/`locate_all`, as
+  written in the source) right then sees exactly the namespace Rocq just
+  resolved it against — no separate pass over the file, and no extra
+  elaboration.
 - **Auto-loading a not-yet-imported domain** uses the same
   `Loadpath.locate_absolute_library` → `Library.intern_from_file` →
   `Library.require_library_from_dirpath` pipeline the real `Require`
@@ -292,17 +381,20 @@ machinery Rocq already ships — no new parser or elaborator required:
 ```
 src/
   domain_scan.ml          Enumerate constants/inductives under given dirpath prefixes.
-  clash_detect.ml          Union Nametab.locate_all with probed members; filter by excluded prefixes.
+  clash_detect.ml          Union Nametab.locate_all with probed members; filter by excluded prefixes;
+                           group ambiguous use sites.
   ensure_loaded.ml           Auto-Require a domain that isn't loaded yet, without Import-ing it.
-  glob_capture.ml               Capture resolved identifiers via Dumpglob.Feedback.
+  glob_capture.ml               Capture resolved identifiers via Dumpglob.Feedback, judging each
+                                use site against the namespace at that moment.
   text_table.ml                    Shared box-drawing grid renderer (Pp.tag and ANSI backends).
   report.ml                           Shared report type + renderer (used by both front ends).
   g_namespace_analysis.mlg               The `NamespaceAnalysis` vernacular command (native plugin).
 theories/
   Loader.v                                 `Declare ML Module` — Require Import this to load the plugin.
 cli/
-  namespace_analysis_cli.ml  Standalone driver: loads a Rocq document like `coqtop -l`,
-                              runs the same analysis, prints to stdout.
+  namespace_analysis_cli.ml  Standalone driver: loads a Rocq document like `coqtop -l`
+                              (under its real logical name), runs the same analysis,
+                              prints to stdout; batch mode runs one worker process per file.
 test/
   fixtures/, expected/, run_test.sh   Fixture libraries (clashing names, multi-level domains,
                                        three-way domain counts, a hypothetical-only domain, a
@@ -382,11 +474,17 @@ disappearing/reappearing correctly with `--include`; a clash buried in the
 libraries' same-named constructors on otherwise differently-named types; the
 "excluded winner" edge case below, pinning that a clash whose actual current
 winner falls under an excluded prefix is still reported, with no winner
-marked, rather than either hidden entirely or shown anyway; batch mode
-(`--dir`) correctly aggregating identifier occurrences from more than one
-target file into a single report, with single-file invocations remaining
-byte-identical to before batch mode existed; and `--format summary`/`json`
-agreeing with the default grid's clash count on the same batch input.
+marked, rather than either hidden entirely or shown anyway; use sites
+judged where they happen (`UseSite.v`: a mid-file `Import` flipping a
+name's meaning, a `Section`-scoped `Import` ending with its section, and a
+fully qualified use not being reported); a file that names its own module
+(`SelfRef.v`) elaborating under its real logical name; batch mode giving
+each file its own report, never duplicating a file against its own compiled
+copy or aborting on two files that define the same name, and reporting a
+failing file while still running the rest; and `--format summary`/`json`
+agreeing with the grid on the same input. Every plugin fixture's CLI twin
+(`*Cli.v`) is kept line-for-line aligned with it, since use sites are
+reported by line and the two front ends' output is diffed.
 
 `test/run_error_test.sh`, invoked automatically at the end of the above,
 covers the CLI's error paths: no target file, an `-R` pointing at a
@@ -469,8 +567,8 @@ in `vsrocq.path` as the fallback.
 
 `theories/Loader.v` alone has nothing to actually analyze. To open one of
 the demo fixtures directly (`test/fixtures/Main.v`,
-`test/fixtures/MutualInductive.v`, `test/fixtures/ConstructorClash.v`,
-`test/fixtures/ExcludedWinner.v` — the ones that call the native
+`test/fixtures/UseSite.v`, `test/fixtures/MutualInductive.v`,
+`test/fixtures/ConstructorClash.v`, `test/fixtures/ExcludedWinner.v` — the ones that call the native
 `NamespaceAnalysis` command, as opposed to the `*Cli.v` files, which are
 CLI-only and have no live-editable payload), its own dependency libraries
 need to be compiled first, and `_CoqProject` needs to know where they
@@ -520,6 +618,23 @@ open question) and what's left to do.
   `-dump-glob` file output for the rest of that compilation unit. Irrelevant
   unless you're simultaneously generating `coqdoc` documentation from the
   same run.
+- **An ambiguous use doesn't say whether the other candidates were imported.**
+  Its alternatives are every loaded global whose name ends in what was
+  written — the same set `Locate` shows — so they mix two situations: a
+  candidate that *was* imported and then shadowed by a later `Import` (real
+  "last import wins"), and one whose module was only `Require`d (latent:
+  importing it later would flip the result). Rocq's public `Nametab` API
+  doesn't expose the difference: `locate_all` returns only the head entry
+  of each name-tree node, and the shadowed entries behind it live in
+  `nametab.ml`'s internal state, with no import-status query in
+  `Declaremods` either. Libraries the tool itself loaded (hypothetical
+  domains, via `Ensure_loaded`) are left out of use sites entirely, since
+  the file never loaded them.
+- **Use sites are judged from the source text on disk.** The written form
+  of a reference is only available as a byte range, so it's read from the
+  file. If the file on disk doesn't match what was elaborated (e.g. an
+  editor buffer with unsaved changes), the slice won't end in the resolved
+  identifier and that use is skipped rather than misjudged.
 - **Domain arguments are library/module prefixes only** (e.g. `MyDev.PartA`),
   matching `Print Namespace`'s argument style. File-path domains are a
   planned extension, not yet built.
@@ -532,7 +647,8 @@ open question) and what's left to do.
   clash candidate even though Rocq itself would *never* actually resolve
   a bare short name to it. Fixed via `Declare.is_local_constant` (see
   `Examples.md` §17): such a candidate now gets a plain-text `(Local)`
-  suffix in the grid (both front ends), rather than being silently
+  suffix in the grids (both front ends, both Clashes and Ambiguous uses),
+  rather than being silently
   dropped — a `Local` member could still be worth surfacing (e.g. it
   becomes a real problem if someone later removes the `Local`). Not shown
   in `--format summary`/`json`. Scoped to constants only — `Local` outside
@@ -547,23 +663,31 @@ open question) and what's left to do.
   winner singled out, rather than either hiding the whole clash or revealing
   an excluded winner anyway. Flagged for revisit. Pinned as a regression
   (not resolved) by `ExcludedWinner.v` in the test suite — see `Examples.md`.
-- The CLI always exits `0`; a `--strict` flag for CI gating (nonzero exit on
-  any clash) isn't built yet.
+- The CLI exits `0` whatever it finds (`1` only when a file fails to
+  elaborate, including one file of a batch); a `--strict` flag for CI
+  gating (nonzero exit on any ambiguous use or clash) isn't built yet.
 
 ## Roadmap
 
 - File-path domain arguments (resolve a `.v` path to its module prefix).
-- `--strict` CI exit-code mode — `--format json` (see "Batch mode") gives
+- Parallel batch mode (`-j N`): the per-file workers are independent
+  processes, so running several at once is straightforward; they run one
+  at a time for now.
+- Split ambiguous uses into "imported, then shadowed" and "loaded but not
+  imported" — needs a way to see `Nametab`'s shadowed entries that the
+  public API doesn't offer (see "Known limitations").
+- `--strict` CI exit-code mode — `--format json` (see "Output formats") gives
   this a firmer footing than parsing terminal output, but the exit-code flag
   itself still isn't built.
 - A domain argument matching nothing should say so explicitly, distinct from
   a clean bill of health.
 - `_CoqProject`/`Makefile` parsing for `--dir`, so batch mode could point at
-  an arbitrary project without hand-supplied `-R`/`-Q` mappings — see "Batch
-  mode" above for why this was deliberately left out for now.
+  an arbitrary project without hand-supplied `-R`/`-Q` mappings, and
+  analyze exactly the files the project builds — see "Batch mode" above for
+  why this was deliberately left out for now.
 - `--format summary`/`json` don't carry the `(Local)` label the grid now
   does (see "Known limitations" above) — `--summary`'s "no winner marked"
-  count (see "Batch mode") still can't split out a `Local`-caused false
+  count (see "Output formats") still can't split out a `Local`-caused false
   positive from a genuine one. Would need either a `Clash_detect`
   signature change or a JSON schema change (adding a `local` field to
   each candidate) — not done, since no real consumer of that distinction

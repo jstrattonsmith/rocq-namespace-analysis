@@ -63,11 +63,17 @@ identical — `test/run_test.sh` diffs their output against each other for every
   vernacular command usable inside a `.v` file mid-compilation. Only sees identifiers used *after*
   `Require Import Loader.` installs capture.
 - **CLI** (`cli/namespace_analysis_cli.ml`): a standalone driver that loads a Rocq document like
-  `coqtop -l`, installs capture *before* loading the target file (so it has none of the plugin's
-  "must import Loader first" restriction), then runs the identical engine. Batch mode (`--dir`,
-  repeatable positional files) folds `Vernac.load_vernac` over every target file into the same
-  session before analyzing once at the end — the engine itself doesn't know or care whether it's
-  looking at one file or a whole corpus.
+  `coqtop -l` — under the file's real logical name (`Coqargs.TopPhysical`, the same derivation
+  `rocq compile` uses), not `Top` — installs capture *before* loading the target file (so it has
+  none of the plugin's "must import Loader first" restriction), then runs the identical engine.
+  Batch mode (`--dir`, repeatable positional files) re-executes the CLI once per file with a hidden
+  `--batch-worker` flag, each file in its own process, and the parent only collects pre-rendered
+  per-file results. Never load several files into one session: that duplicates each file against
+  the compiled copy its neighbours `Require` (see `Examples.md` §18).
+
+Because use sites are reported by line and the test suite diffs plugin output against CLI output,
+every `test/fixtures/*Cli.v` twin must stay line-for-line aligned with its plugin fixture (the
+`Loader` line becomes a comment, in-file `NamespaceAnalysis` commands become blank lines).
 
 Both front ends thread through the same pipeline, one module per stage:
 
@@ -91,8 +97,14 @@ Both front ends thread through the same pipeline, one module per stage:
 4. **`Glob_capture`** — hijacks `Dumpglob`'s `Feedback` output mode (normally how `.glob` files
    for `coqdoc` get generated) to record every identifier the elaborator resolves, in memory,
    instead of to disk. This shadows real `-dump-glob` output for the rest of the compilation unit.
+   The feedback arrives synchronously, mid-elaboration, so the handler also judges each use site
+   right then: it reads the name as written from the source and records `Nametab.locate`/
+   `locate_all` for it (minus libraries `Ensure_loaded` loaded itself). `Clash_detect.ambiguous_uses`
+   later filters and groups these; it never consults the current `Nametab`.
 
-`Report` renders the same result type four ways: `to_pp` (plugin message panel, `Pp.tag`-based
+`Report` has three sections — ambiguous uses (per use site), clashes (the namespace at the
+analysis point: the command's position for the plugin, end of file for the CLI), used
+identifiers — and renders them four ways: `to_pp` (plugin message panel, `Pp.tag`-based
 emphasis via `Text_table`), `to_string` (plain/ANSI grid, CLI stdout, TTY-detected — the clash
 winner always gets a plain-text `<- used` suffix regardless of color support, never the only
 signal), `to_summary` (one line of counts, no grid, for a whole-corpus `--dir` run), and `to_json`

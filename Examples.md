@@ -13,6 +13,16 @@ export OCAMLPATH="$PWD/_build/install/default/lib:${OCAMLPATH:-}"
 CLI="$PWD/_build/default/cli/namespace_analysis_cli.exe"
 ```
 
+**Output format note (Workstream 10, §18)**: the captured outputs in §1–17
+predate the use-site analysis. Since then, every grid report starts with an
+extra "Ambiguous uses (judged where each name was used):" section, the
+"Clashes:" heading reads "Clashes (namespace state at the analysis
+point):", the `--format summary` line starts with "N ambiguous use
+site(s)", and `--format json` has an `"ambiguous_uses"` array. The
+clash and used-identifier content shown in those sections is unchanged.
+Batch mode's *behavior* changed too, not just its format — §7 is
+superseded by §18.
+
 ## 1. Mutual-inductive scanning (Workstream 1)
 
 **Bug fixed**: `members_of_domains` used to hardcode inductive index `0`, so
@@ -300,6 +310,13 @@ source — nixpkgs' binary cache already had every dependency (`rocq-core`,
 `dune`, `ocaml`, `odoc`, etc.) for the pinned `flake.lock` revision.
 
 ## 7. Batch mode and output formats (Workstream 8)
+
+> **Superseded by §18.** This section documents the original batch design,
+> which loaded every file into one shared session and produced one merged
+> report. That turned out to be wrong for any real project (every
+> definition "clashed" with its own compiled copy); batch mode now analyzes
+> each file separately. Kept for the record; the output below is no longer
+> what the CLI prints.
 
 **Fixture files** (`test/fixtures/batch/`) -- two independent target files,
 each `Require`ing a different half of `MyDev` and `Check`-ing a different
@@ -806,3 +823,154 @@ locality field on that AST node).
 (same "grid-only" precedent as the large-report note) -- a JSON consumer
 wanting Local-detection would need the equivalent check independently for
 now.
+
+## 18. Use-site analysis, per-file batch mode, real logical names (Workstream 10)
+
+**What prompted it.** Starting the Iris case study (Workstream 9, Pass 2),
+batch mode over just `iris/algebra/ofe.v` and `cmra.v` reported 522 clashes
+among 584 symbols — nearly all of them a definition against itself
+(`Top.Cofe` vs `iris.algebra.ofe.Cofe`). Batch mode loaded each source file
+into one shared session under `Top`, next to the compiled copy that the
+other files `Require`. Discussing the fix surfaced the deeper problem: even
+for a single file, the report's clash grid is a snapshot of the namespace
+at the *end* of the file, while "last import wins" happens line by line.
+
+**The fix, in three parts:**
+
+1. **Every use is judged where it happens.** `Glob_capture`'s `Feedback`
+   handler runs synchronously while the command using a name is still
+   being elaborated, so it looks the name up *as written in the source*
+   (`Nametab.locate` for the winner, `Nametab.locate_all` for everything
+   else it could mean) against exactly the namespace Rocq just resolved it
+   in. Confirmed directly before building it (a throwaway spike): a
+   mid-file `Import` flips the result, and a `Section`-scoped `Import` stops
+   applying after `End`. New "Ambiguous uses" report section, in all four
+   renderings.
+2. **Batch mode analyzes each file on its own**, in a fresh worker process
+   (the CLI re-executes itself with a hidden `--batch-worker` flag), and
+   the parent prints the per-file reports plus a total. No shared session.
+3. **Each file is elaborated under its real logical name**, derived from
+   the `-R`/`-Q` mappings by the same `Coqinit.dirpath_of_file` that
+   `rocq compile` uses, instead of a fixed `Top`. Three real Iris files
+   (`algebra/big_op.v`, `base_logic/lib/fancy_updates.v`,
+   `bi/sbi_unfold.v`) refer to their own definitions by module name
+   (`big_op.big_opM_unseal`) and failed to elaborate at all under `Top`.
+
+**Use sites** — `test/fixtures/UseSite.v`, with `x` defined in both
+`UseLibA.UseA` and `UseLibB.UseB`:
+
+```coq
+From NamespaceAnalysis Require Import Loader.
+From UseLibA Require Import UseA.
+From UseLibB Require UseB.
+
+Check x.                (* line 5  *)
+Section S.
+  Import UseLibB.UseB.
+  Check x.              (* line 8  *)
+End S.
+Check x.                (* line 10 *)
+Check UseLibB.UseB.x.   (* line 11 *)
+Import UseLibB.UseB.
+Check x.                (* line 13 *)
+
+NamespaceAnalysis UseLibA UseLibB.
+```
+
+```
+NamespaceAnalysis: 2 symbol(s) in scanned domain(s)
+Ambiguous uses (judged where each name was used):
+┌─────────────────┬─────────────────────────────────────────┐
+│ Name as written │ Candidates at that point (alphabetical) │
+├─────────────────┼─────────────────────────────────────────┤
+│ x (lines 5, 10) │ UseLibA.UseA.x <- used                  │
+│                 │ UseLibB.UseB.x                          │
+├─────────────────┼─────────────────────────────────────────┤
+│ x (lines 8, 13) │ UseLibA.UseA.x                          │
+│                 │ UseLibB.UseB.x <- used                  │
+└─────────────────┴─────────────────────────────────────────┘
+Clashes (namespace state at the analysis point):
+┌────────────┬───────────────────────────┐
+│ Short name │ Candidates (alphabetical) │
+├────────────┼───────────────────────────┤
+│ x          │ UseLibA.UseA.x            │
+│            │ UseLibB.UseB.x <- used    │
+└────────────┴───────────────────────────┘
+```
+(Used-identifiers table omitted.) The end-of-file Clashes grid says `x`
+means `UseLibB.UseB.x`, which is wrong for lines 5 and 10. Line 10 is
+grouped with line 5, not with line 8, because the section's `Import` ended
+with `End S`. The fully qualified use on line 11 has one candidate and
+isn't reported. `--format json` on the CLI twin:
+
+```json
+"ambiguous_uses":[{"name":"x","lines":[5,10],"winner":"UseLibA.UseA.x","alternatives":["UseLibB.UseB.x"]},{"name":"x","lines":[8,13],"winner":"UseLibB.UseB.x","alternatives":["UseLibA.UseA.x"]}]
+```
+
+**Batch mode** — the same `test/fixtures/batch/` files as §7, now reported
+per file (`--format summary`):
+
+```
+test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
+test/fixtures/batch/Two.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
+Total: 2 file(s) analyzed, 0 failed, 0 ambiguous use site(s)
+```
+
+Each file now sees its own winner for `K` (`PartA.K` in `One.v`, `PartB.K` in
+`Two.v`), where the old merged report showed only whichever file loaded last.
+
+**On a real, built project** (`test/fixtures/batchproj/`: `Base.v`, a
+`Uses.v` that `Require`s it, and `DupA.v`/`DupB.v` both defining `dup`), the
+old design produced exactly the two failures the new test guards against —
+confirmed by building the pre-change CLI and running it:
+
+```
+-- old batch over Base.v + Uses.v:  T, mk, thing each reported as a clash (against Top.T, Top.mk, Top.thing)
+-- old batch over the whole dir:
+Error: dup already exists.
+```
+
+The new CLI analyzes all four files cleanly, with no `Top.` anywhere.
+
+**Iris 4.5.0, end to end** (all 178 files of the Nix-installed tree,
+`--domain iris --format summary`): 215s wall-clock, 0 failures (including
+the three `Top`-sensitive files above), 2,251 ambiguous use sites with the
+default `Corelib` exclusion. Judging use sites costs almost nothing: in the
+spike, 157,446 lookups across all of Iris took 0.08s in total, and per-file
+times with and without it were within noise. The cost of batch mode is
+elaboration (about what compiling the files costs) plus about 0.25s of
+process start-up and dependency loading per file. This is a smoke test, not
+the case study itself — that's Workstream 9, Pass 2.
+
+**Two design details worth knowing:**
+
+- **Libraries the tool loaded itself are left out of use sites.** Without
+  this, the plugin and CLI disagreed on `Hypothetical.v`: the plugin's first
+  `NamespaceAnalysis MyDev.PartC.` command auto-`Require`s `PartC` in the
+  middle of the file, so the later `Check K` saw `PartC.K` as a candidate,
+  while the CLI only loads it at the end. `Ensure_loaded` now records
+  everything it loaded (`loaded_by_tool`), and those are never use-site
+  candidates.
+- **"Imported then shadowed" vs "loaded but not imported" isn't split.** A
+  use site's alternatives are every loaded global whose name ends in what
+  was written (the same set `Locate` shows). Checked Rocq's `nametab.ml`
+  directly: `locate_all` returns only the head entry of each name-tree
+  node, and the shadowed entries behind it aren't reachable through any
+  public function; `Declaremods` has no import-status query either. So the
+  report doesn't claim a split it can't make. See README "Known
+  limitations".
+
+**Plugin/CLI parity.** Use sites are reported by line, so every `*Cli.v`
+twin is now line-for-line aligned with its plugin fixture: the `Loader`
+import line became a comment, and in-file `NamespaceAnalysis` commands
+became blank lines.
+
+**Confirmed load-bearing**, one revert at a time, each followed by a
+restore and a green re-run:
+- the logical-name fix → the new `SelfRef.v` section fails ("The reference
+  SelfRef.a was not found");
+- the `loaded_by_tool` filter → the existing `Hypothetical.v` parity diff
+  fails (the plugin reports `PartC.K`, the CLI doesn't);
+- the old shared-session batch design → self-clashes and "dup already
+  exists" (above);
+- turning off use-site judgment → the golden `report.txt` diff fails.

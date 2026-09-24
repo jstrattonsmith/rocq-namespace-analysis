@@ -1,5 +1,12 @@
 NamespaceAnalysis: 3 symbol(s) in scanned domain(s)
-Clashes:
+Ambiguous uses (judged where each name was used):
+┌─────────────────┬─────────────────────────────────────────┐
+│ Name as written │ Candidates at that point (alphabetical) │
+├─────────────────┼─────────────────────────────────────────┤
+│ K (line 6)      │ MyDev.PartA.K                           │
+│                 │ MyDev.PartB.K <- used                   │
+└─────────────────┴─────────────────────────────────────────┘
+Clashes (namespace state at the analysis point):
 ┌────────────┬───────────────────────────┐
 │ Short name │ Candidates (alphabetical) │
 ├────────────┼───────────────────────────┤

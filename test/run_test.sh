@@ -35,7 +35,8 @@ split_blocks() {
 echo "==> compiling fixture libraries"
 mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
   "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb" \
-  "$WORK/chaina" "$WORK/chainb" "$WORK/chaind" "$WORK/localfpa" "$WORK/localfpb"
+  "$WORK/chaina" "$WORK/chainb" "$WORK/chaind" "$WORK/localfpa" "$WORK/localfpb" \
+  "$WORK/usesitea" "$WORK/usesiteb" "$WORK/selfref" "$WORK/batchproj"
 cp test/fixtures/libs/mydev/PartA.v test/fixtures/libs/mydev/PartB.v test/fixtures/libs/mydev/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
@@ -54,6 +55,10 @@ cp test/fixtures/libs/chain/b/ChainB.v "$WORK/chainb/"
 cp test/fixtures/libs/chain/d/ChainD.v "$WORK/chaind/"
 cp test/fixtures/libs/localfp/a/LocalA.v "$WORK/localfpa/"
 cp test/fixtures/libs/localfp/b/LocalB.v "$WORK/localfpb/"
+cp test/fixtures/libs/usesite/a/UseA.v "$WORK/usesitea/"
+cp test/fixtures/libs/usesite/b/UseB.v "$WORK/usesiteb/"
+cp test/fixtures/libs/selfref/SelfRef.v "$WORK/selfref/"
+cp test/fixtures/batchproj/*.v "$WORK/batchproj/"
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartC.v" >/dev/null
@@ -74,6 +79,11 @@ rocq compile -R "$WORK/chaina" ChainA -R "$WORK/chainb" ChainB "$WORK/chainb/Cha
 rocq compile -R "$WORK/chaind" ChainD "$WORK/chaind/ChainD.v" >/dev/null
 rocq compile -R "$WORK/localfpa" LocalLibA "$WORK/localfpa/LocalA.v" >/dev/null
 rocq compile -R "$WORK/localfpb" LocalLibB "$WORK/localfpb/LocalB.v" >/dev/null
+rocq compile -R "$WORK/usesitea" UseLibA "$WORK/usesitea/UseA.v" >/dev/null
+rocq compile -R "$WORK/usesiteb" UseLibB "$WORK/usesiteb/UseB.v" >/dev/null
+for f in Base DupA DupB Uses; do
+  rocq compile -R "$WORK/batchproj" Proj "$WORK/batchproj/$f.v" >/dev/null
+done
 
 # ---------------------------------------------------------------------------
 echo "==> base fixture: native plugin command (Main.v)"
@@ -295,36 +305,101 @@ if grep -q "MyDev.PartC.K (Local)" "$WORK/hyp_local_check.txt"; then
 fi
 
 # ---------------------------------------------------------------------------
-echo "==> batch mode (--dir): aggregates occurrences across multiple target files into one report"
-# Two independent target files (test/fixtures/batch/{One,Two}.v), each
-# Requiring a different half of MyDev and Check-ing a different identifier.
-# Neither file alone would surface both -- this is specifically checking
-# that Glob_capture's occurrence buffer accumulates across every file in the
-# batch, not just the last one loaded. (Note: "Defined in" is always the
-# *defining* library's logical dirpath -- Dumpglob's own filepath field is
-# `Names.DirPath.to_string lib_dp`, not the analyzed source file -- so both
-# rows below correctly still say "MyDev.PartA"/"MyDev.PartB", not the path
-# to One.v/Two.v; what's being checked is that both rows appear at all.)
+echo "==> use sites (UseSite.v): each use is judged against the namespace where it was used"
+# x exists in both UseLibA and UseLibB. Line 5 (A imported, B only
+# Required) resolves to A; line 8, inside a Section that Imports B,
+# resolves to B; line 10, after `End S`, is back to A -- the section-scoped
+# Import is gone again; line 13, after a file-level Import of B, is B.
+# An end-of-file snapshot alone (the "Clashes" grid, winner B) would get
+# lines 5 and 10 wrong. Line 11 writes the fully qualified UseLibB.UseB.x,
+# which has only one candidate, so it's never reported.
+rocq compile $THEORIES -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB \
+  test/fixtures/UseSite.v > "$WORK/us_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/us_out.txt" > "$WORK/us_plugin.txt"
+AMBIG_SECTION="$(sed -n '/^Ambiguous uses/,/^Clashes/p' "$WORK/us_plugin.txt")"
+echo "$AMBIG_SECTION" | grep -A1 "x (lines 5, 10)" | grep -q "UseLibA.UseA.x <- used"
+echo "$AMBIG_SECTION" | grep -A1 "x (lines 8, 13)" | grep -q "UseLibA.UseA.x"
+echo "$AMBIG_SECTION" | grep -A2 "x (lines 8, 13)" | grep -q "UseLibB.UseB.x <- used"
+if echo "$AMBIG_SECTION" | grep -q "11"; then
+  echo "FAIL: the fully qualified use on line 11 was reported as ambiguous"
+  exit 1
+fi
+sed -n '/^Clashes/,/^Used identifiers/p' "$WORK/us_plugin.txt" | grep -q "UseLibB.UseB.x <- used"
+
+echo "==> use sites, CLI parity"
+"$CLI" -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB --domain UseLibA --domain UseLibB \
+  test/fixtures/UseSiteCli.v > "$WORK/us_cli.txt"
+diff -u "$WORK/us_plugin.txt" "$WORK/us_cli.txt"
+"$CLI" -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB --domain UseLibA --domain UseLibB \
+  --format json test/fixtures/UseSiteCli.v > "$WORK/us_json.txt"
+grep -q '"ambiguous_uses":\[{"name":"x","lines":\[5,10\],"winner":"UseLibA.UseA.x","alternatives":\["UseLibB.UseB.x"\]},{"name":"x","lines":\[8,13\],"winner":"UseLibB.UseB.x","alternatives":\["UseLibA.UseA.x"\]}\]' "$WORK/us_json.txt"
+"$CLI" -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB --domain UseLibA --domain UseLibB \
+  --format summary test/fixtures/UseSiteCli.v | grep -q "^NamespaceAnalysis: 4 ambiguous use site(s),"
+
+# ---------------------------------------------------------------------------
+echo "==> real logical name: a file that names its own module still elaborates (SelfRef.v)"
+# `rocq compile` names a file after its -R/-Q mapping (SelfLib.SelfRef), so
+# `SelfRef.a` inside it resolves. The CLI used to load every target as
+# `Top`, where it didn't -- the same failure hit three real Iris files
+# (e.g. big_op.v's `big_op.big_opM_unseal`).
+"$CLI" -R "$WORK/selfref" SelfLib --domain SelfLib "$WORK/selfref/SelfRef.v" > "$WORK/selfref_out.txt"
+grep -q "a *│ SelfLib.SelfRef" "$WORK/selfref_out.txt"
+
+# ---------------------------------------------------------------------------
+echo "==> batch mode (--dir): each file is analyzed on its own, in its own process"
+# test/fixtures/batch/{One,Two}.v each Require a different half of MyDev:
+# each gets its own report, reflecting only its own imports (One sees
+# PartA's K win, Two sees PartB's).
 "$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
   --dir test/fixtures/batch > "$WORK/batch_grid.txt"
-grep -q "helper.*MyDev.PartA" "$WORK/batch_grid.txt"
-grep -q "K.*MyDev.PartB" "$WORK/batch_grid.txt"
-grep -q "MyDev.PartB.K <- used" "$WORK/batch_grid.txt"
+sed -n '/^==> test\/fixtures\/batch\/One.v/,/^==> /p' "$WORK/batch_grid.txt" > "$WORK/batch_one.txt"
+sed -n '/^==> test\/fixtures\/batch\/Two.v/,$p' "$WORK/batch_grid.txt" > "$WORK/batch_two.txt"
+grep -q "helper.*MyDev.PartA" "$WORK/batch_one.txt"
+grep -q "MyDev.PartA.K <- used" "$WORK/batch_one.txt"
+grep -q "MyDev.PartB.K <- used" "$WORK/batch_two.txt"
+grep -q "^Total: 2 file(s) analyzed, 0 failed, 0 ambiguous use site(s)" "$WORK/batch_grid.txt"
 
-echo "==> batch mode, backward compatibility: single-file invocation is still byte-identical"
+echo "==> batch mode: --format summary / json report per file"
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  --dir test/fixtures/batch --format summary > "$WORK/batch_summary.txt"
+grep -q "^test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used" "$WORK/batch_summary.txt"
+grep -q "^test/fixtures/batch/Two.v: NamespaceAnalysis:" "$WORK/batch_summary.txt"
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
+  --dir test/fixtures/batch --format json > "$WORK/batch_json.txt"
+grep -q '"file":"test/fixtures/batch/One.v","report":{' "$WORK/batch_json.txt"
+grep -q '"name":"K","winner":"MyDev.PartB.K","alternatives":\["MyDev.PartA.K"\]' "$WORK/batch_json.txt"
+grep -q '"failed":0,"ambiguous_sites":0}$' "$WORK/batch_json.txt"
+
+echo "==> batch mode over a real, built project: no self-clashes, no cross-file collisions"
+# Uses.v Requires Base, whose compiled copy is exactly what the old
+# one-shared-session batch mode duplicated: Base.v's own definitions were
+# loaded under `Top` next to Proj.Base's, so thing/T/mk each "clashed" with
+# themselves. DupA.v and DupB.v both define `dup`, which made the old
+# shared session abort outright ("dup already exists").
+"$CLI" -R "$WORK/batchproj" Proj --domain Proj --dir "$WORK/batchproj" --format json > "$WORK/batchproj.txt"
+grep -q '"failed":0,' "$WORK/batchproj.txt"
+if grep -q 'Top\.' "$WORK/batchproj.txt"; then
+  echo "FAIL: batch output mentions Top.* -- a file was duplicated against its own compiled copy"
+  exit 1
+fi
+grep -q '"identifier":"thing","defined_in":"Proj.Base"' "$WORK/batchproj.txt"
+
+echo "==> batch mode: a file that fails is reported, the rest still run, exit code 1"
+set +e
+"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA test/fixtures/batch/One.v test/fixtures/BadCompile.v \
+  --format summary > "$WORK/batch_fail.txt" 2> "$WORK/batch_fail_err.txt"
+CODE=$?
+set -e
+[ "$CODE" -eq 1 ] || { echo "FAIL: expected exit 1 when a batch file fails, got $CODE"; exit 1; }
+grep -q "^test/fixtures/batch/One.v: NamespaceAnalysis:" "$WORK/batch_fail.txt"
+grep -q "^test/fixtures/BadCompile.v: FAILED" "$WORK/batch_fail.txt"
+grep -q "^Total: 2 file(s) analyzed, 1 failed" "$WORK/batch_fail.txt"
+grep -q "has type \"bool\" while it is expected to have type \"nat\"" "$WORK/batch_fail_err.txt"
+
+echo "==> single-file invocation is still exactly the expected report"
 "$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
   test/fixtures/MainCli.v > "$WORK/batch_compat.txt"
 diff -u test/expected/report.txt "$WORK/batch_compat.txt"
-
-echo "==> --format summary / --format json agree with the grid on the same batch input"
-"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
-  --dir test/fixtures/batch --format summary > "$WORK/batch_summary.txt"
-grep -q "1 clash(es) found (0 with no winner marked), 2 identifier(s) used" "$WORK/batch_summary.txt"
-"$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
-  --dir test/fixtures/batch --format json > "$WORK/batch_json.txt"
-grep -q '"name":"K","winner":"MyDev.PartB.K","alternatives":\["MyDev.PartA.K"\]' "$WORK/batch_json.txt"
-grep -q '"identifier":"helper","defined_in":"MyDev.PartA"' "$WORK/batch_json.txt"
-grep -q '"identifier":"K","defined_in":"MyDev.PartB"' "$WORK/batch_json.txt"
 
 echo "==> --format rejects an unknown value cleanly"
 set +e
@@ -347,7 +422,7 @@ From LargeB Require Import LargeB.
 EOF
 "$CLI" -R "$WORK/largea" LargeA -R "$WORK/largeb" LargeB --domain LargeA --domain LargeB \
   "$WORK/LargeDriver.v" > "$WORK/large_out.txt"
-grep -q "^Note: 101 clashes found -- for a more compact view" "$WORK/large_out.txt"
+grep -q "^Note: 101 clashes and 0 ambiguous uses found -- for a more compact view" "$WORK/large_out.txt"
 
 echo "==> ...but not for a small report (no false positives)"
 "$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \

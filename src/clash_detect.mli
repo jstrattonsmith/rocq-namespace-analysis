@@ -30,3 +30,23 @@ type clash = {
     thing that narrows the candidate set; probing itself is never
     restricted to [members] or to any particular domain. *)
 val find_clashes : excluded:DirPath.t list -> GlobRef.t list -> clash list
+
+(** One way a name, as written in the analyzed source, was ambiguous at the
+    point it was used (see {!Glob_capture.type-use_site}). *)
+type ambiguous_use = {
+  written : string;
+  lines : int list;  (** every line with this same situation, ascending *)
+  use_winner : Glob_capture.candidate option;
+      (** what it resolved to; [None] if that falls under an excluded
+          prefix (same rule as {!clash.winner}) *)
+  use_alternatives : Glob_capture.candidate list;
+      (** every other non-excluded candidate, sorted by path *)
+}
+
+(** [ambiguous_uses ~excluded occurrences] keeps every use site with 2+
+    non-excluded candidates at the moment of use, grouping uses that saw
+    exactly the same winner and alternatives. Unlike {!find_clashes}, this
+    never looks at the current [Nametab]: it only reads what
+    {!Glob_capture} recorded at each use, so it describes the file as it
+    was elaborated, not the namespace at the end of it. *)
+val ambiguous_uses : excluded:DirPath.t list -> Glob_capture.occurrence list -> ambiguous_use list

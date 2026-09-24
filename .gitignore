@@ -24,3 +24,7 @@ result-*
 !.vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Written by lia/nia into the working directory when an analyzed file uses them.
+.lia.cache
+.nia.cache

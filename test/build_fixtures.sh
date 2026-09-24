@@ -39,7 +39,10 @@ compile test/fixtures/libs/construct/a ConstructLibA ConstructA.v
 compile test/fixtures/libs/construct/b ConstructLibB ConstructB.v
 compile test/fixtures/libs/exclwinner/a ExclWinLibA ExclWinA.v
 compile test/fixtures/libs/exclwinner/b ExclWinLibB ExclWinB.v
+compile test/fixtures/libs/usesite/a UseLibA UseA.v
+compile test/fixtures/libs/usesite/b UseLibB UseB.v
 
 echo "Fixture libraries compiled. Open e.g. test/fixtures/Main.v,"
-echo "test/fixtures/MutualInductive.v, test/fixtures/ConstructorClash.v, or"
-echo "test/fixtures/ExcludedWinner.v directly in your editor."
+echo "test/fixtures/MutualInductive.v, test/fixtures/ConstructorClash.v,"
+echo "test/fixtures/ExcludedWinner.v, or test/fixtures/UseSite.v directly in"
+echo "your editor."

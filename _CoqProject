@@ -28,3 +28,5 @@
 -R test/fixtures/libs/construct/b ConstructLibB
 -R test/fixtures/libs/exclwinner/a ExclWinLibA
 -R test/fixtures/libs/exclwinner/b ExclWinLibB
+-R test/fixtures/libs/usesite/a UseLibA
+-R test/fixtures/libs/usesite/b UseLibB

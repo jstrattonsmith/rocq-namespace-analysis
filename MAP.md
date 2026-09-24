@@ -25,9 +25,12 @@ command) has zero examples anywhere; see the "Not built" section.
 | Mutual-inductive scanning (every packet in a block, not just index 0) | `Examples.md` §1 | `MutualInductive.v`/`Cli.v` | "mutual-inductive clash" | `src/domain_scan.ml` |
 | Constructor scanning | `Examples.md` §2 | `ConstructorClash.v`/`Cli.v` | "constructor clash" | `src/domain_scan.ml` |
 | Excluded-winner edge case (real winner excluded → no winner shown, not hidden) | `Examples.md` §5 | `ExcludedWinner.v`/`Cli.v` | "excluded winner" | `src/clash_detect.ml` (`winner` computation) |
-| Batch/`--dir` mode, multi-file aggregation | `Examples.md` §7 | `batch/{One,Two}.v` | "batch mode" | `cli/namespace_analysis_cli.ml` |
-| `--format grid\|summary\|json` | `Examples.md` §7 | `batch/{One,Two}.v` | "`--format` summary/json agree..." | `src/report.ml` (`to_summary`, `to_json`) |
-| Large-report note (grid past 100 clashes points at `--format`) | `Examples.md` §14 | generated at test-time, not checked in | "large-report note" / "...but not for a small report" | `src/report.ml` (`size_note`) |
+| Ambiguous uses, judged at each use site (mid-file `Import` flip, `Section`-scoped `Import`, qualified use not reported) | `Examples.md` §18 | `UseSite.v`/`Cli.v` | "use sites" / "use sites, CLI parity" | `src/glob_capture.ml` (`judge_use_site`), `src/clash_detect.ml` (`ambiguous_uses`), `src/report.ml` |
+| Tool-loaded libraries excluded from use sites | `Examples.md` §18 | `Hypothetical.v`/`Cli.v` | "hypothetical domain, CLI parity" | `src/ensure_loaded.ml` (`loaded_by_tool`) |
+| Target elaborated under its real logical name, not `Top` | `Examples.md` §18 | `libs/selfref/SelfRef.v` | "real logical name" | `cli/namespace_analysis_cli.ml` (`analyze`) |
+| Batch/`--dir` mode: each file analyzed on its own, in its own process | `Examples.md` §18 (§7 is the superseded original) | `batch/{One,Two}.v`, `batchproj/*.v` | "batch mode" (four sections) | `cli/namespace_analysis_cli.ml` (`run_batch`, `run_worker`) |
+| `--format grid\|summary\|json` | `Examples.md` §7 (old shapes), §18 | `batch/{One,Two}.v`, `UseSite*.v` | "batch mode: --format summary / json", "use sites, CLI parity" | `src/report.ml` (`to_summary`, `to_json`, `counts`) |
+| Large-report note (grid past 100 clashes or ambiguous-use rows points at `--format`) | `Examples.md` §14 | generated at test-time, not checked in | "large-report note" / "...but not for a small report" | `src/report.ml` (`size_note`) |
 | Transitive ("chained") imports found correctly, no special-case code | `Examples.md` §15 | `ChainedImport.v`/`Cli.v` | "transitive imports" | none needed — `Global.env ()`/`Nametab` are already fully-resolved |
 | `Local`-definition false positive: labeled `(Local)`, not silently dropped | `Examples.md` §17 | `LocalFalsePositive.v`/`Cli.v` | "Local false positive" (both sections, incl. the `Hypothetical.v` non-regression check) | `src/report.ml` (`is_local_member`, via `Declare.is_local_constant`) |
 
@@ -68,8 +71,12 @@ command) has zero examples anywhere; see the "Not built" section.
   "designed, not yet built") — "of everything an imported domain exports,
   which pieces does this file actually depend on." Everything in this
   repo, including every example above, is `NamespaceAnalysis` only.
-- **`--strict` CI exit-code mode.** Roadmap item; the CLI always exits 0
-  today regardless of clashes found.
+- **`--strict` CI exit-code mode.** Roadmap item; the CLI exits 0 today
+  regardless of what it finds (1 only when a file fails to elaborate).
+- **Parallel batch mode (`-j`).** Roadmap item; workers run one at a time.
+- **Splitting ambiguous uses into "imported, then shadowed" vs "loaded but
+  not imported."** Roadmap item, blocked on Rocq's public `Nametab` API
+  (README "Known limitations", `Examples.md` §18).
 - **File-path domain arguments** (resolving a `.v` path to its module
   prefix, rather than requiring the logical dirpath). Roadmap item.
 - **`_CoqProject`/`Makefile` auto-parsing for `--dir`.** Explicitly out of

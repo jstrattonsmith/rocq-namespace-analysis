@@ -4,10 +4,11 @@ open Pp
 type t = {
   member_count : int;
   clashes : Clash_detect.clash list;
+  ambiguous : Clash_detect.ambiguous_use list;
   used : Glob_capture.occurrence list;
 }
 
-let make ~member_count ~clashes ~used = { member_count; clashes; used }
+let make ~member_count ~clashes ~ambiguous ~used = { member_count; clashes; ambiguous; used }
 
 let qualified_name gr = Libnames.string_of_path (Nametab.path_of_global gr)
 
@@ -57,6 +58,28 @@ let clash_row (c : Clash_detect.clash) =
   in
   { Text_table.label = Id.to_string c.name; entries }
 
+let ambiguous_row (a : Clash_detect.ambiguous_use) =
+  let candidate is_winner (c : Glob_capture.candidate) =
+    let text = if c.local then c.path ^ local_marker else c.path in
+    let text = if is_winner then text ^ Text_table.plain_marker else text in
+    (c.path, { Text_table.text; emphasized = is_winner })
+  in
+  let entries =
+    (match a.use_winner with Some w -> [ candidate true w ] | None -> [])
+    @ List.map (candidate false) a.use_alternatives
+    |> List.sort (fun (a, _) (b, _) -> String.compare a b)
+    |> List.map snd
+  in
+  let lines =
+    match a.lines with
+    | [ l ] -> Printf.sprintf "line %d" l
+    | ls -> "lines " ^ String.concat ", " (List.map string_of_int ls)
+  in
+  { Text_table.label = Printf.sprintf "%s (%s)" a.written lines; entries }
+
+let ambiguous_site_count (r : t) =
+  List.fold_left (fun n (a : Clash_detect.ambiguous_use) -> n + List.length a.lines) 0 r.ambiguous
+
 (* Past this many distinct clashing names, the grid itself becomes the
    readability problem, not the analysis (confirmed: 1,000 clashes render
    as a 3,007-line table) -- surface a hint toward --format summary/json
@@ -68,13 +91,18 @@ let clash_row (c : Clash_detect.clash) =
 let large_report_threshold = 100
 
 let size_note (r : t) =
-  let n = List.length r.clashes in
-  if n > large_report_threshold then
+  let n = List.length r.clashes and m = List.length r.ambiguous in
+  if n > large_report_threshold || m > large_report_threshold then
     Some
       (Printf.sprintf
-         "Note: %d clashes found -- for a more compact view of a report this size, use the CLI with --format summary or --format json."
-         n)
+         "Note: %d clashes and %d ambiguous uses found -- for a more compact view of a report this size, use the CLI with --format summary or --format json."
+         n m)
   else None
+
+let ambiguous_heading = "Ambiguous uses (judged where each name was used):"
+let no_ambiguous = "No ambiguous uses found."
+let ambiguous_headers = ("Name as written", "Candidates at that point (alphabetical)")
+let clash_heading = "Clashes (namespace state at the analysis point):"
 
 let is_named_occurrence (o : Glob_capture.occurrence) = o.ident <> "<>"
 
@@ -100,17 +128,36 @@ let to_pp (r : t) =
     if named_used = [] then str "Used identifiers: (none captured)"
     else Text_table.render_pp ~headers:("Identifier", "Defined in") (List.map used_row named_used)
   in
+  let ambiguous_body =
+    if r.ambiguous = [] then str no_ambiguous
+    else Text_table.render_pp ~headers:ambiguous_headers (List.map ambiguous_row r.ambiguous)
+  in
   let note_line = match size_note r with Some msg -> str msg ++ fnl () | None -> mt () in
-  header ++ fnl () ++ note_line ++ str "Clashes:" ++ fnl () ++ clash_body ++ fnl ()
+  header ++ fnl () ++ note_line ++ str ambiguous_heading ++ fnl () ++ ambiguous_body ++ fnl ()
+  ++ str clash_heading ++ fnl () ++ clash_body ++ fnl ()
   ++ str "Used identifiers:" ++ fnl () ++ used_body
 
-let to_summary (r : t) =
-  let clash_count = List.length r.clashes in
-  let no_winner_count = List.length (List.filter (fun (c : Clash_detect.clash) -> c.winner = None) r.clashes) in
-  let used_count = List.length (List.filter is_named_occurrence r.used) in
+type counts = {
+  members : int;
+  clash_count : int;
+  no_winner_count : int;
+  used_count : int;
+  ambiguous_sites : int;
+}
+
+let counts (r : t) =
+  { members = r.member_count;
+    clash_count = List.length r.clashes;
+    no_winner_count = List.length (List.filter (fun (c : Clash_detect.clash) -> c.winner = None) r.clashes);
+    used_count = List.length (List.filter is_named_occurrence r.used);
+    ambiguous_sites = ambiguous_site_count r }
+
+let summary_of_counts c =
   Printf.sprintf
-    "NamespaceAnalysis: %d symbol(s) in scanned domain(s), %d clash(es) found (%d with no winner marked), %d identifier(s) used"
-    r.member_count clash_count no_winner_count used_count
+    "NamespaceAnalysis: %d ambiguous use site(s), %d symbol(s) in scanned domain(s), %d clash(es) found (%d with no winner marked), %d identifier(s) used"
+    c.ambiguous_sites c.members c.clash_count c.no_winner_count c.used_count
+
+let to_summary (r : t) = summary_of_counts (counts r)
 
 let json_escape s =
   let buf = Buffer.create (String.length s + 2) in
@@ -149,12 +196,21 @@ let to_json (r : t) =
     Printf.sprintf {|{"identifier":%s,"defined_in":%s}|}
       (json_string o.ident) (json_string (occurrence_location o))
   in
+  let candidate_json (c : Glob_capture.candidate) = json_string c.path in
+  let ambiguous_json (a : Clash_detect.ambiguous_use) =
+    Printf.sprintf {|{"name":%s,"lines":[%s],"winner":%s,"alternatives":[%s]}|}
+      (json_string a.written)
+      (String.concat "," (List.map string_of_int a.lines))
+      (match a.use_winner with Some w -> candidate_json w | None -> "null")
+      (String.concat "," (List.map candidate_json a.use_alternatives))
+  in
   let clashes_json = r.clashes |> List.map clash_json |> String.concat "," in
+  let ambiguous_json_list = r.ambiguous |> List.map ambiguous_json |> String.concat "," in
   let used_json_list =
     r.used |> List.filter is_named_occurrence |> List.map used_json |> String.concat ","
   in
-  Printf.sprintf {|{"member_count":%d,"clashes":[%s],"used":[%s]}|}
-    r.member_count clashes_json used_json_list
+  Printf.sprintf {|{"member_count":%d,"ambiguous_uses":[%s],"clashes":[%s],"used":[%s]}|}
+    r.member_count ambiguous_json_list clashes_json used_json_list
 
 let to_string ?(color = false) r =
   let header =
@@ -169,6 +225,11 @@ let to_string ?(color = false) r =
     if named_used = [] then "Used identifiers: (none captured)"
     else Text_table.render_string ~ansi:color ~headers:("Identifier", "Defined in") (List.map used_row named_used)
   in
+  let ambiguous_body =
+    if r.ambiguous = [] then no_ambiguous
+    else Text_table.render_string ~ansi:color ~headers:ambiguous_headers (List.map ambiguous_row r.ambiguous)
+  in
   let note_lines = match size_note r with Some msg -> [ msg ] | None -> [] in
   String.concat "\n"
-    (([ header ] @ note_lines) @ [ "Clashes:"; clash_body; "Used identifiers:"; used_body ])
+    (([ header ] @ note_lines)
+    @ [ ambiguous_heading; ambiguous_body; clash_heading; clash_body; "Used identifiers:"; used_body ])

@@ -17,3 +17,10 @@
     domain always gave, rather than a loud error -- not distinguishable in
     general from "this was always meant as a prefix". *)
 val ensure_required : Names.DirPath.t -> unit
+
+(** [loaded_by_tool dp]: whether [dp] lies under a library that
+    {!ensure_required} itself loaded (the domain or any not-yet-loaded
+    dependency of it), rather than one the analyzed file loaded on its own.
+    Used to keep this tool's own side effects out of use-site judgments
+    (see {!Glob_capture}). *)
+val loaded_by_tool : Names.DirPath.t -> bool

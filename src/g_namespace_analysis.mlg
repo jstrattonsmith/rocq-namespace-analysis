@@ -32,7 +32,8 @@ let run_namespace_analysis domains excl incl =
   let members = Domain_scan.members_of_domains dps in
   let clashes = Clash_detect.find_clashes ~excluded members in
   let used = Glob_capture.occurrences () in
-  let report = Report.make ~member_count:(List.length members) ~clashes ~used in
+  let ambiguous = Clash_detect.ambiguous_uses ~excluded used in
+  let report = Report.make ~member_count:(List.length members) ~clashes ~ambiguous ~used in
   Feedback.msg_notice (Report.to_pp report)
 
 }

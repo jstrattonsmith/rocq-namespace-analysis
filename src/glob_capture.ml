@@ -4,6 +4,7 @@ type candidate = {
   path : string;
   dirpath : DirPath.t;
   local : bool;
+  status : Import_status.t option;
 }
 
 type use_site = {
@@ -60,10 +61,17 @@ let written_text (loc : Loc.t) ident =
     | _ -> None)
   | Loc.ToplevelInput -> None
 
-let candidate_of gr =
+(* [~alternative:true] also judges whether the candidate's module is
+   imported right now -- the use-site moment is exactly when that answer
+   means something. Not for the winner (it's the one that resolved), and not
+   for a Local candidate (never reachable by its bare name, whatever its
+   module's status). *)
+let candidate_of ~alternative gr =
+  let local = match gr with GlobRef.ConstRef c -> Declare.is_local_constant c | _ -> false in
   { path = Libnames.string_of_path (Nametab.path_of_global gr);
     dirpath = Nametab.dirpath_of_global gr;
-    local = (match gr with GlobRef.ConstRef c -> Declare.is_local_constant c | _ -> false) }
+    local;
+    status = (if alternative && not local then Some (Import_status.of_global gr) else None) }
 
 let is_global = function GlobRef.VarRef _ -> false | _ -> true
 
@@ -88,7 +96,11 @@ let judge_use_site loc filepath ident kind =
                    && not (Ensure_loaded.loaded_by_tool (Nametab.dirpath_of_global gr)))
           in
           if others = [] then None
-          else Some { written; winner = candidate_of winner; others = List.map candidate_of others }))
+          else
+            Some
+              { written;
+                winner = candidate_of ~alternative:false winner;
+                others = List.map (candidate_of ~alternative:true) others }))
 
 let handle_feedback (fb : Feedback.feedback) =
   match fb.Feedback.contents with

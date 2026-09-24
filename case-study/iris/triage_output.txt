@@ -1,5 +1,6 @@
 files analyzed: 178, failed: 0
-ambiguous use sites: 2251 (grouped rows: 765)
+tool's own split (before this script's judgment calls): {'shadowing': 855, 'partly_imported': 63, 'unknown': 351, 'latent': 912, 'local_only': 70}
+ambiguous use sites: 2251 (grouped rows: 775)
 files with >= 1 ambiguous use site: 127
 distinct names as written: 291
 top files: [('iris/heap_lang/lang.v', 164), ('iris/base_logic/bi.v', 112), ('iris/bi/big_op.v', 111), ('iris/heap_lang/proph_erasure.v', 109), ('iris/heap_lang/proofmode.v', 86), ('iris/heap_lang/primitive_laws.v', 80), ('iris/si_logic/bi.v', 74), ('iris/proofmode/environments.v', 68)]

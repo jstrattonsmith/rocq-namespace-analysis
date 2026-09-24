@@ -2,19 +2,21 @@
 
 See `METHOD.md` in this same directory for how to reproduce every number
 here. All figures come from `triage_output.txt` (the output of `triage.py`),
-captured on Rocq 9.1.1 with this repo at `04ada98`; `METHOD.md` was then
-dry-run end to end in a fresh worktree, and it reproduced them exactly
-(`output.json` byte-identical across the two runs).
+captured on Rocq 9.1.1. First produced with a separate probe (commit
+`b1f4269`, whose `METHOD.md` was dry-run end to end in a fresh worktree and
+reproduced it exactly); regenerated from the tool's own built-in
+import-status labels (Workstream 11), which agree with the probe on all
+5,841 (use site, alternative) pairs and give the same split below.
 
 ## 1. Headline
 
 | | |
 |---|---|
 | Files analyzed | 178 (0 failed), one worker process each |
-| Wall-clock, whole corpus | 214–216 s across three runs |
+| Wall-clock, whole corpus | 214–223 s before Workstream 11; about 3–4% more with the built-in labels (§5) |
 | Peak memory (largest single worker) | 1.1 GB |
 | Identifier uses captured | 232,093 |
-| **Ambiguous use sites** | **2,251** (in 127 files; 291 distinct names as written; 765 grouped rows) |
+| **Ambiguous use sites** | **2,251** (in 127 files; 291 distinct names as written; 775 grouped rows) |
 | — real shadowing | **873** (39%) |
 | — latent | **1,308** (58%) |
 | — local-only | **70** (3%) |
@@ -30,9 +32,20 @@ dry-run end to end in a fresh worktree, and it reproduced them exactly
 - **Local-only**: every other candidate is declared `Local`, so it can never
   be reached by that bare name.
 
-The tool alone reports the 2,251 without the three-way split — Rocq's public
-API can't distinguish them (README "Known limitations"). The split comes
-from a separate, throwaway probe, checked by hand (§4). **Say "2,251 uses of
+Rocq's public API can't distinguish these (README "Known limitations"), so
+the tool labels each alternative by an indirect test instead (§4,
+`METHOD.md`). Its own split, as it reports it:
+
+| Shadowing | Partly imported | Unknown | Latent | Local-only |
+|---|---|---|---|---|
+| 855 | 63 | 351 | 912 | 70 |
+
+The 873 / 1,308 / 70 above resolve the two undecided labels by two
+Iris-specific judgment calls, each checked against the source (`METHOD.md`):
+the partly-imported ones are either a lone `#[local]` sibling (counted as
+shadowed) or stdpp's filtered `String` export (latent), and every
+"unknown" module was checked never to be imported anywhere in Iris or
+stdpp (latent). **Say "2,251 uses of
 a name that's also defined somewhere else that's loaded", never "2,251
 shadowing bugs"**: even among the 873 real-shadowing sites, almost all are
 deliberate design (§2).
@@ -110,7 +123,7 @@ An end-of-file snapshot sees none of this: by the end of the file the
 section is closed. This is the pattern the use-site analysis
 (Workstream 10) was built for, occurring naturally in Iris.
 
-## 4. Hand verification of the probe
+## 4. Hand verification of the import-status test
 
 30 sites, drawn at random (seed 2027) from the probe's first version,
 stratified 12 shadowed / 12 latent / 6 unknown. Each was checked against
@@ -186,14 +199,17 @@ out of this beyond the fix:
   fixture.
 - **Scale.** 178 files in about 3.5 minutes sequentially, peak 1.1 GB for
   the largest single file. Judging use sites is a negligible part of that
-  (Workstream 10 measured 0.08 s for all of Iris's lookups).
+  (Workstream 10 measured 0.08 s for all of Iris's lookups). The built-in
+  import-status labels (Workstream 11) add about 3–4% over the whole
+  corpus, measured back to back against the previous build (`summary`
+  222 s → 229 s, `json` 217–219 s → 226–228 s).
 - **Notations**, which Iris overrides deliberately and often (its
   `config/flags` turns off `notation-overridden`), are out of scope: the
   tool doesn't analyze notations yet (README Roadmap).
 
 ## 6. Caveats
 
-- The shadowed/latent split relies on the probe's indirect test (a module
+- The shadowed/latent split relies on the tool's indirect test (a module
   counts as imported when all its uniquely named siblings resolve by bare
   name) plus two hand-checked judgment calls (METHOD.md). It is verified on
   a 30-site sample, not proven in general.

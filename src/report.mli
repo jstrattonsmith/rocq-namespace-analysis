@@ -3,12 +3,7 @@
     [Feedback.msg_notice]) or for a terminal ([to_string]). Both front ends
     must render identical content. *)
 
-type t = {
-  member_count : int;
-  clashes : Clash_detect.clash list;
-  ambiguous : Clash_detect.ambiguous_use list;
-  used : Glob_capture.occurrence list;
-}
+type t
 
 val make :
   member_count:int ->
@@ -16,6 +11,11 @@ val make :
   ambiguous:Clash_detect.ambiguous_use list ->
   used:Glob_capture.occurrence list ->
   t
+
+(** Render right after [make], at the same analysis point: clash-grid
+    import status is judged (once, then memoized per report) at first
+    render, and only by the renderings that show it -- [to_summary] and
+    {!counts} never pay for it. *)
 
 (** Every rendering has two different kinds of finding, from two different
     moments, and labels them accordingly:
@@ -39,7 +39,11 @@ val make :
     fully-qualified-accessible, so [Environ.fold_constants] retains it)
     but Rocq would never actually resolve a bare short name to it, so it's
     labeled rather than shown as an indistinguishable clash risk (in both
-    the clash and the ambiguous-use grids) (see
+    the clash and the ambiguous-use grids). Every other non-winning
+    candidate gets its {!Import_status} as a suffix: [" (shadowed)"],
+    [" (not imported)"], [" (partly imported k/n)"] or
+    [" (import status unknown)"] -- judged at the use site in the
+    ambiguous-use grid, and at the analysis point in the clash grid (see
     [Declare.is_local_constant] in [report.ml]). [to_summary]/[to_json] do
     not include this label, matching the large-report note above in being
     grid-only. *)
@@ -62,25 +66,46 @@ val to_summary : t -> string
 
 (** The numbers behind {!to_summary}, separately, so a batch run can
     report per-file results and add them up. [ambiguous_sites] counts
-    distinct (name, line) use sites, not grouped rows. *)
+    distinct (name, line) use sites, not grouped rows; the five [*_sites]
+    after it split that count by {!Clash_detect.use_kind}. *)
 type counts = {
   members : int;
   clash_count : int;
   no_winner_count : int;
   used_count : int;
   ambiguous_sites : int;
+  shadowing_sites : int;
+  partial_sites : int;
+  unknown_sites : int;
+  latent_sites : int;
+  local_only_sites : int;
 }
 
 val counts : t -> counts
+
+(** Field-wise sum, for a batch total. Only the ambiguous-use-site fields
+    mean anything summed across files (the rest describe each file's own,
+    overlapping environment). *)
+val add_counts : counts -> counts -> counts
+
+(** ["N ambiguous use site(s) (S shadowing, P partly imported, U unknown,
+    L latent, O local-only)"] -- the leading part of {!summary_of_counts},
+    also used on its own for a batch total. *)
+val ambiguous_breakdown : counts -> string
 
 val summary_of_counts : counts -> string
 
 (** A fixed JSON shape (hand-serialized, no external JSON dependency,
     intentionally not a general-purpose encoder): [{"member_count": int,
-    "ambiguous_uses": [{"name", "lines": [int], "winner" (string or null),
-    "alternatives": [string]}, ...], "clashes": [{"name", "winner" (string or null), "alternatives": [string]},
-    ...], "used": [{"identifier", "defined_in"}, ...]}]. Alternatives are
-    sorted alphabetically, same as the grid. *)
+    "ambiguous_uses": [{"name", "lines": [int], "kind", "winner" (string
+    or null), "alternatives": [alternative]}, ...], "clashes": [{"name",
+    "winner" (string or null), "alternatives": [alternative]}, ...],
+    "used": [{"identifier", "defined_in"}, ...]}], where an alternative is
+    [{"name", "status"}] with status one of ["shadowed"], ["not_imported"],
+    ["partial"] (plus ["resolving"] and ["tested"] counts), ["unknown"] or
+    ["local"], and "kind" is one of ["shadowing"], ["partly_imported"],
+    ["unknown"], ["latent"], ["local_only"] (see {!Clash_detect.use_kind}).
+    Alternatives are sorted alphabetically, same as the grid. *)
 val to_json : t -> string
 
 (** JSON string literal for [s] (quoted and escaped), for callers composing

@@ -33,7 +33,9 @@ type extra = {
   format : string option;
   worker : (string * bool) option;
       (** internal: [--batch-worker <result file> <0|1 color>], set only
-          by a batch parent on the child processes it spawns *)
+          by a batch parent on the child processes it spawns, which also
+          pass along the parent's [--format] so the worker renders only
+          that *)
 }
 
 (* Consumes our own --domain/--exclude/--include/--dir/--format/<file>
@@ -163,21 +165,22 @@ let analyze opts async_opts x f_in =
   let ambiguous = Clash_detect.ambiguous_uses ~excluded used in
   Report.make ~member_count:(List.length members) ~clashes ~ambiguous ~used
 
-(* What a batch worker hands back to its parent. Pre-rendered, because
-   rendering needs the worker's own loaded environment (Nametab paths of
+(* What a batch worker hands back to its parent: the one rendering the
+   parent's --format needs (empty for summary, which only needs [counts]).
+   Pre-rendered, because rendering needs the worker's own loaded
+   environment (Nametab paths of
    clash candidates), which the parent never has. *)
 type worker_result = {
-  grid : string;
-  json : string;
+  rendered : string;
   counts : Report.counts;
 }
 
-(* The parent's own argv minus everything that selects targets or output
-   (--dir, --format, the target files), so each worker gets the same
-   load path, domains, and exclusions, plus its one file. *)
+(* The parent's own argv minus everything that selects targets (--dir, the
+   target files), so each worker gets the same load path, domains,
+   exclusions and --format, plus its one file. *)
 let worker_base_args args (x : extra) =
   let rec strip = function
-    | ("--dir" | "--format") :: _ :: rest -> strip rest
+    | "--dir" :: _ :: rest -> strip rest
     | a :: rest when List.mem a x.files -> strip rest
     | a :: rest -> a :: strip rest
     | [] -> []
@@ -205,19 +208,24 @@ let run_worker ~base_args ~color f =
    definitions under `Top` next to the compiled copy its neighbours
    Require -- every symbol "clashed" with itself -- and leaked one file's
    Imports into the next. Each file's report stands alone; only the
-   ambiguous-use-site count is added up, since the other counts describe
+   ambiguous-use-site counts are added up, since the other counts describe
    overlapping environments and wouldn't mean anything summed. *)
 let run_batch args x format files =
   let base_args = worker_base_args args x in
   let color = format = `Grid && Unix.isatty Unix.stdout in
   let results = List.map (fun f -> (f, run_worker ~base_args ~color f)) files in
   let failed = List.length (List.filter (fun (_, r) -> r = None) results) in
-  let total_sites =
-    List.fold_left (fun n (_, r) -> match r with Some r -> n + r.counts.Report.ambiguous_sites | None -> n) 0 results
+  let total =
+    List.fold_left
+      (fun acc (_, r) -> match (acc, r) with
+         | None, Some r -> Some r.counts
+         | Some a, Some r -> Some (Report.add_counts a r.counts)
+         | acc, None -> acc)
+      None results
   in
   let total_line =
-    Printf.sprintf "Total: %d file(s) analyzed, %d failed, %d ambiguous use site(s)"
-      (List.length files) failed total_sites
+    Printf.sprintf "Total: %d file(s) analyzed, %d failed, %s" (List.length files) failed
+      (match total with Some c -> Report.ambiguous_breakdown c | None -> "0 ambiguous use site(s)")
   in
   (match format with
    | `Grid ->
@@ -225,7 +233,7 @@ let run_batch args x format files =
        (fun (f, r) ->
          print_endline ("==> " ^ f);
          match r with
-         | Some r -> print_endline r.grid
+         | Some r -> print_endline r.rendered
          | None -> print_endline "FAILED (see the error on stderr)")
        results;
      print_endline total_line
@@ -240,11 +248,16 @@ let run_batch args x format files =
    | `Json ->
      let file_json (f, r) =
        match r with
-       | Some r -> Printf.sprintf {|{"file":%s,"report":%s}|} (Report.json_string f) r.json
+       | Some r -> Printf.sprintf {|{"file":%s,"report":%s}|} (Report.json_string f) r.rendered
        | None -> Printf.sprintf {|{"file":%s,"error":true}|} (Report.json_string f)
      in
-     Printf.printf {|{"files":[%s],"failed":%d,"ambiguous_sites":%d}|}
-       (String.concat "," (List.map file_json results)) failed total_sites;
+     let c f = match total with Some t -> f t | None -> 0 in
+     Printf.printf
+       {|{"files":[%s],"failed":%d,"ambiguous_sites":%d,"by_kind":{"shadowing":%d,"partly_imported":%d,"unknown":%d,"latent":%d,"local_only":%d}}|}
+       (String.concat "," (List.map file_json results)) failed
+       (c (fun t -> t.Report.ambiguous_sites)) (c (fun t -> t.Report.shadowing_sites))
+       (c (fun t -> t.Report.partial_sites)) (c (fun t -> t.Report.unknown_sites))
+       (c (fun t -> t.Report.latent_sites)) (c (fun t -> t.Report.local_only_sites));
      print_newline ());
   if failed > 0 then exit 1
 
@@ -261,9 +274,13 @@ let () =
     | _, [] -> die "need a target .v file"
     | Some (out, color), [ f ] ->
       let report = analyze opts async_opts x f in
-      let result =
-        { grid = Report.to_string ~color report; json = Report.to_json report; counts = Report.counts report }
+      let rendered =
+        match format with
+        | `Grid -> Report.to_string ~color report
+        | `Json -> Report.to_json report
+        | `Summary -> ""
       in
+      let result = { rendered; counts = Report.counts report } in
       Out_channel.with_open_bin out (fun oc -> Marshal.to_channel oc result [])
     | Some _, _ -> die "--batch-worker takes exactly one target file"
     | None, [ f ] ->

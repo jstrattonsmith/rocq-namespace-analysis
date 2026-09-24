@@ -3,14 +3,14 @@ Ambiguous uses (judged where each name was used):
 ┌─────────────────┬─────────────────────────────────────────┐
 │ Name as written │ Candidates at that point (alphabetical) │
 ├─────────────────┼─────────────────────────────────────────┤
-│ K (line 6)      │ MyDev.PartA.K                           │
+│ K (line 6)      │ MyDev.PartA.K (shadowed)                │
 │                 │ MyDev.PartB.K <- used                   │
 └─────────────────┴─────────────────────────────────────────┘
 Clashes (namespace state at the analysis point):
 ┌────────────┬───────────────────────────┐
 │ Short name │ Candidates (alphabetical) │
 ├────────────┼───────────────────────────┤
-│ K          │ MyDev.PartA.K             │
+│ K          │ MyDev.PartA.K (shadowed)  │
 │            │ MyDev.PartB.K <- used     │
 └────────────┴───────────────────────────┘
 Used identifiers:

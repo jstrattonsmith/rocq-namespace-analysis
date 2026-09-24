@@ -31,6 +31,21 @@ type clash = {
     restricted to [members] or to any particular domain. *)
 val find_clashes : excluded:DirPath.t list -> GlobRef.t list -> clash list
 
+(** What an ambiguous use amounts to, from its alternatives' import status
+    ({!Glob_capture.candidate}), strongest first:
+    - [Shadowing]: some alternative's module was imported, so it was
+      reachable by this name and lost -- real "last import wins";
+    - [Partly_imported]: none shadowed, but some alternative's module was
+      imported through a filter ([Import M (x)]), which can't say whether
+      that alternative itself came along;
+    - [Unknown_import]: none of the above, but some alternative's module
+      had no testable sibling;
+    - [Latent]: every alternative's module is only loaded, not imported --
+      importing one later would change what the name means;
+    - [Local_only]: every alternative is [Local], never reachable by this
+      name at all. *)
+type use_kind = Shadowing | Partly_imported | Unknown_import | Latent | Local_only
+
 (** One way a name, as written in the analyzed source, was ambiguous at the
     point it was used (see {!Glob_capture.type-use_site}). *)
 type ambiguous_use = {
@@ -41,11 +56,13 @@ type ambiguous_use = {
           prefix (same rule as {!clash.winner}) *)
   use_alternatives : Glob_capture.candidate list;
       (** every other non-excluded candidate, sorted by path *)
+  kind : use_kind;
 }
 
 (** [ambiguous_uses ~excluded occurrences] keeps every use site with 2+
     non-excluded candidates at the moment of use, grouping uses that saw
-    exactly the same winner and alternatives. Unlike {!find_clashes}, this
+    exactly the same winner and alternatives, with the same import status
+    each. Unlike {!find_clashes}, this
     never looks at the current [Nametab]: it only reads what
     {!Glob_capture} recorded at each use, so it describes the file as it
     was elaborated, not the namespace at the end of it. *)

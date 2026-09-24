@@ -41,8 +41,13 @@ compile test/fixtures/libs/exclwinner/a ExclWinLibA ExclWinA.v
 compile test/fixtures/libs/exclwinner/b ExclWinLibB ExclWinB.v
 compile test/fixtures/libs/usesite/a UseLibA UseA.v
 compile test/fixtures/libs/usesite/b UseLibB UseB.v
+compile test/fixtures/libs/importstatus/a ISLibA ISA.v
+compile test/fixtures/libs/importstatus/b ISLibB ISB.v
+compile test/fixtures/libs/importstatus/c ISLibC ISC.v
+compile test/fixtures/libs/importstatus/d ISLibD ISD.v
+compile test/fixtures/libs/importstatus/e ISLibE ISE.v
 
 echo "Fixture libraries compiled. Open e.g. test/fixtures/Main.v,"
 echo "test/fixtures/MutualInductive.v, test/fixtures/ConstructorClash.v,"
-echo "test/fixtures/ExcludedWinner.v, or test/fixtures/UseSite.v directly in"
-echo "your editor."
+echo "test/fixtures/ExcludedWinner.v, test/fixtures/UseSite.v, or"
+echo "test/fixtures/ImportStatus.v directly in your editor."

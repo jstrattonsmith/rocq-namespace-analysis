@@ -50,12 +50,28 @@ let find_clashes ~excluded members =
         Some { name; winner; alternatives })
     (Id.Map.bindings by_name)
 
+type use_kind = Shadowing | Partly_imported | Unknown_import | Latent | Local_only
+
 type ambiguous_use = {
   written : string;
   lines : int list;
   use_winner : Glob_capture.candidate option;
   use_alternatives : Glob_capture.candidate list;
+  kind : use_kind;
 }
+
+(* Strongest claim first: one really shadowed alternative makes the use a
+   real "last import wins"; an undecided one (partial/unknown) outranks a
+   clean "only loaded"; all-Local means nothing else could ever be reached
+   by this name. *)
+let kind_of (alts : Glob_capture.candidate list) =
+  let has p = List.exists p alts in
+  let status s (c : Glob_capture.candidate) = c.status = Some s in
+  if has (status Import_status.Imported) then Shadowing
+  else if has (fun c -> match c.status with Some (Import_status.Partial _) -> true | _ -> false) then Partly_imported
+  else if has (status Import_status.Unknown) then Unknown_import
+  else if has (status Import_status.Not_imported) then Latent
+  else Local_only
 
 let candidate_excluded excluded (c : Glob_capture.candidate) =
   List.exists (fun e -> Libnames.is_dirpath_prefix_of e c.dirpath) excluded
@@ -64,13 +80,14 @@ let candidate_excluded excluded (c : Glob_capture.candidate) =
    drop out, 2+ remaining makes the use ambiguous, and an excluded winner
    is left unmarked rather than revealed. Uses of the same written name
    that saw the same winner and the same alternatives collapse into one
-   entry listing every line, in first-seen order; a use whose winner
-   changed (a later Import, a Section-scoped one) stays a separate entry. *)
+   entry listing every line, in first-seen order; a use whose winner, or
+   any alternative's import status, changed (a later Import, a
+   Section-scoped one) stays a separate entry. *)
 let ambiguous_uses ~excluded (occurrences : Glob_capture.occurrence list) =
   let key_of written winner alts =
     ( written,
       Option.map (fun (c : Glob_capture.candidate) -> c.path) winner,
-      List.map (fun (c : Glob_capture.candidate) -> c.path) alts )
+      List.map (fun (c : Glob_capture.candidate) -> (c.path, c.status)) alts )
   in
   let groups = Hashtbl.create 16 in
   let order = ref [] in
@@ -94,7 +111,8 @@ let ambiguous_uses ~excluded (occurrences : Glob_capture.occurrence list) =
           | None ->
             order := key :: !order;
             Hashtbl.replace groups key
-              { written = u.written; lines = [ line ]; use_winner = winner; use_alternatives = alts }
+              { written = u.written; lines = [ line ]; use_winner = winner; use_alternatives = alts;
+                kind = kind_of alts }
         end)
     occurrences;
   List.rev_map

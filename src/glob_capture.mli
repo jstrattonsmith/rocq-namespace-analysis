@@ -23,6 +23,11 @@ type candidate = {
   path : string;  (** fully qualified name *)
   dirpath : Names.DirPath.t;  (** for excluded-prefix filtering *)
   local : bool;  (** declared [Local]; see [Report] *)
+  status : Import_status.t option;
+      (** for an alternative (not the winner, not [Local]): whether its
+          module was imported at the use site -- [Imported] means it was
+          reachable by that name and lost ("last import wins"),
+          [Not_imported] that it's only loaded (latent). *)
 }
 
 (** What the name, as written, could have meant at the moment it was used.
@@ -33,10 +38,10 @@ type use_site = {
   others : candidate list;
       (** every other loaded global sharing that written (partial) name --
           mirrors [Locate]: this includes candidates whose module was only
-          [Require]d, not [Import]ed, since Rocq's public [Nametab] API
-          doesn't expose which of them were imported-then-shadowed.
-          Libraries loaded by this tool itself (see
-          {!Ensure_loaded.loaded_by_tool}) are left out. *)
+          [Require]d, not [Import]ed; each one's [status] tells them apart
+          (approximately -- see {!Import_status}). Libraries loaded by
+          this tool itself (see {!Ensure_loaded.loaded_by_tool}) are left
+          out. *)
 }
 
 type occurrence = {

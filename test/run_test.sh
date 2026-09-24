@@ -36,7 +36,8 @@ echo "==> compiling fixture libraries"
 mkdir -p "$WORK/mydev" "$WORK/deep" "$WORK/other" "$WORK/one" "$WORK/two" "$WORK/three" "$WORK/excl" \
   "$WORK/muta" "$WORK/mutb" "$WORK/consa" "$WORK/consb" "$WORK/exclwina" "$WORK/exclwinb" \
   "$WORK/chaina" "$WORK/chainb" "$WORK/chaind" "$WORK/localfpa" "$WORK/localfpb" \
-  "$WORK/usesitea" "$WORK/usesiteb" "$WORK/selfref" "$WORK/batchproj"
+  "$WORK/usesitea" "$WORK/usesiteb" "$WORK/selfref" "$WORK/batchproj" \
+  "$WORK/isa" "$WORK/isb" "$WORK/isc" "$WORK/isd" "$WORK/ise"
 cp test/fixtures/libs/mydev/PartA.v test/fixtures/libs/mydev/PartB.v test/fixtures/libs/mydev/PartC.v "$WORK/mydev/"
 cp test/fixtures/libs/multilevel/deep/DeepOne.v "$WORK/deep/"
 cp test/fixtures/libs/multilevel/other/Sibling.v "$WORK/other/"
@@ -59,6 +60,7 @@ cp test/fixtures/libs/usesite/a/UseA.v "$WORK/usesitea/"
 cp test/fixtures/libs/usesite/b/UseB.v "$WORK/usesiteb/"
 cp test/fixtures/libs/selfref/SelfRef.v "$WORK/selfref/"
 cp test/fixtures/batchproj/*.v "$WORK/batchproj/"
+for l in a b c d e; do cp test/fixtures/libs/importstatus/$l/*.v "$WORK/is$l/"; done
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartA.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartB.v" >/dev/null
 rocq compile -R "$WORK/mydev" MyDev "$WORK/mydev/PartC.v" >/dev/null
@@ -84,6 +86,12 @@ rocq compile -R "$WORK/usesiteb" UseLibB "$WORK/usesiteb/UseB.v" >/dev/null
 for f in Base DupA DupB Uses; do
   rocq compile -R "$WORK/batchproj" Proj "$WORK/batchproj/$f.v" >/dev/null
 done
+rocq compile -R "$WORK/isa" ISLibA "$WORK/isa/ISA.v" >/dev/null
+rocq compile -R "$WORK/isb" ISLibB "$WORK/isb/ISB.v" >/dev/null
+rocq compile -R "$WORK/isc" ISLibC "$WORK/isc/ISC.v" >/dev/null
+rocq compile -R "$WORK/isd" ISLibD "$WORK/isd/ISD.v" >/dev/null
+rocq compile -R "$WORK/ise" ISLibE "$WORK/ise/ISE.v" >/dev/null
+ISLIBS="-R $WORK/isa ISLibA -R $WORK/isb ISLibB -R $WORK/isc ISLibC -R $WORK/isd ISLibD -R $WORK/ise ISLibE"
 
 # ---------------------------------------------------------------------------
 echo "==> base fixture: native plugin command (Main.v)"
@@ -318,6 +326,10 @@ rocq compile $THEORIES -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB \
 sed -n '/^NamespaceAnalysis:/,$p' "$WORK/us_out.txt" > "$WORK/us_plugin.txt"
 AMBIG_SECTION="$(sed -n '/^Ambiguous uses/,/^Clashes/p' "$WORK/us_plugin.txt")"
 echo "$AMBIG_SECTION" | grep -A1 "x (lines 5, 10)" | grep -q "UseLibA.UseA.x <- used"
+# ...and says why each alternative lost: B wasn't imported yet on lines 5
+# and 10 (latent), A was imported and got shadowed on lines 8 and 13.
+echo "$AMBIG_SECTION" | grep -A1 "x (lines 5, 10)" | grep -q "UseLibB.UseB.x (not imported)"
+echo "$AMBIG_SECTION" | grep -A1 "x (lines 8, 13)" | grep -q "UseLibA.UseA.x (shadowed)"
 echo "$AMBIG_SECTION" | grep -A1 "x (lines 8, 13)" | grep -q "UseLibA.UseA.x"
 echo "$AMBIG_SECTION" | grep -A2 "x (lines 8, 13)" | grep -q "UseLibB.UseB.x <- used"
 if echo "$AMBIG_SECTION" | grep -q "11"; then
@@ -332,9 +344,61 @@ echo "==> use sites, CLI parity"
 diff -u "$WORK/us_plugin.txt" "$WORK/us_cli.txt"
 "$CLI" -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB --domain UseLibA --domain UseLibB \
   --format json test/fixtures/UseSiteCli.v > "$WORK/us_json.txt"
-grep -q '"ambiguous_uses":\[{"name":"x","lines":\[5,10\],"winner":"UseLibA.UseA.x","alternatives":\["UseLibB.UseB.x"\]},{"name":"x","lines":\[8,13\],"winner":"UseLibB.UseB.x","alternatives":\["UseLibA.UseA.x"\]}\]' "$WORK/us_json.txt"
+grep -q '"ambiguous_uses":\[{"name":"x","lines":\[5,10\],"kind":"latent","winner":"UseLibA.UseA.x","alternatives":\[{"name":"UseLibB.UseB.x","status":"not_imported"}\]},{"name":"x","lines":\[8,13\],"kind":"shadowing","winner":"UseLibB.UseB.x","alternatives":\[{"name":"UseLibA.UseA.x","status":"shadowed"}\]}\]' "$WORK/us_json.txt"
 "$CLI" -R "$WORK/usesitea" UseLibA -R "$WORK/usesiteb" UseLibB --domain UseLibA --domain UseLibB \
-  --format summary test/fixtures/UseSiteCli.v | grep -q "^NamespaceAnalysis: 4 ambiguous use site(s),"
+  --format summary test/fixtures/UseSiteCli.v \
+  | grep -q "^NamespaceAnalysis: 4 ambiguous use site(s) (2 shadowing, 0 partly imported, 0 unknown, 2 latent, 0 local-only),"
+
+# ---------------------------------------------------------------------------
+echo "==> import status (ImportStatus.v): each alternative says whether its module was imported"
+# Every verdict, and every kind of ambiguous use, once each:
+#   x, line 8:  ISB only Required (not imported); ISC imported through a
+#               filter, `Import ISC (isc_one)` (partly imported 1/2); ISD's x
+#               is Local; ISE has no uniquely named member to test (unknown).
+#               Kind: partly imported (outranks unknown and latent).
+#   y, line 9:  only a Local alternative -> local-only.
+#   z, line 10: only an unknown one -> unknown.
+#   w, line 11: only a not-imported one -> latent.
+#   x/w, lines 13-14, after `Import ISB`: ISA's now shadowed -> shadowing.
+#   w, line 16, after re-`Import ISA`: same winner and alternative as line
+#               11, but ISB is now shadowed -- must stay a separate row.
+#   x, line 21: module `Late`, defined in this file after the tool's
+#               module table was first built, must still be found (the
+#               table is rebuilt when the environment has changed) and read
+#               "not imported", not "unknown". Its logical name comes from
+#               the file name, so the CLI side passes -top ImportStatus.
+rocq compile $THEORIES $ISLIBS test/fixtures/ImportStatus.v > "$WORK/is_out.txt" 2>&1
+sed -n '/^NamespaceAnalysis:/,$p' "$WORK/is_out.txt" > "$WORK/is_plugin.txt"
+IS_AMBIG="$(sed -n '/^Ambiguous uses/,/^Clashes/p' "$WORK/is_plugin.txt")"
+echo "$IS_AMBIG" | grep -q "ISLibB.ISB.x (not imported)"
+echo "$IS_AMBIG" | grep -q "ISLibC.ISC.x (partly imported 1/2)"
+echo "$IS_AMBIG" | grep -q "ISLibD.ISD.x (Local)"
+echo "$IS_AMBIG" | grep -q "ISLibE.ISE.x (import status unknown)"
+echo "$IS_AMBIG" | grep -q "ISLibA.ISA.x (shadowed)"
+echo "$IS_AMBIG" | grep -A1 "w (line 11)" | grep -q "ISLibB.ISB.w (not imported)"
+echo "$IS_AMBIG" | grep -A1 "w (line 16)" | grep -q "ISLibB.ISB.w (shadowed)"
+echo "$IS_AMBIG" | grep -A5 "x (line 21)" | grep -q "ImportStatus.Late.x (not imported)"
+if echo "$IS_AMBIG" | grep -q "(Local) ("; then
+  echo "FAIL: a Local candidate also got an import-status label"
+  exit 1
+fi
+# The clash grid is judged at the analysis point (end of file): ISB is
+# imported by then.
+sed -n '/^Clashes/,/^Used identifiers/p' "$WORK/is_plugin.txt" | grep -q "ISLibB.ISB.x (shadowed)"
+
+echo "==> import status, CLI parity"
+"$CLI" $ISLIBS -top ImportStatus --domain ISLibA --domain ISLibB --domain ISLibC --domain ISLibD --domain ISLibE \
+  test/fixtures/ImportStatusCli.v > "$WORK/is_cli.txt"
+diff -u "$WORK/is_plugin.txt" "$WORK/is_cli.txt"
+"$CLI" $ISLIBS -top ImportStatus --domain ISLibA --domain ISLibB --domain ISLibC --domain ISLibD --domain ISLibE \
+  --format summary test/fixtures/ImportStatusCli.v \
+  | grep -q "^NamespaceAnalysis: 8 ambiguous use site(s) (4 shadowing, 1 partly imported, 1 unknown, 1 latent, 1 local-only),"
+"$CLI" $ISLIBS -top ImportStatus --domain ISLibA --domain ISLibB --domain ISLibC --domain ISLibD --domain ISLibE \
+  --format json test/fixtures/ImportStatusCli.v > "$WORK/is_json.txt"
+grep -q '{"name":"x","lines":\[8\],"kind":"partly_imported","winner":"ISLibA.ISA.x","alternatives":\[{"name":"ISLibB.ISB.x","status":"not_imported"},{"name":"ISLibC.ISC.x","status":"partial","resolving":1,"tested":2},{"name":"ISLibD.ISD.x","status":"local"},{"name":"ISLibE.ISE.x","status":"unknown"}\]}' "$WORK/is_json.txt"
+grep -q '"kind":"local_only"' "$WORK/is_json.txt"
+grep -q '"kind":"unknown"' "$WORK/is_json.txt"
+grep -q '"kind":"latent"' "$WORK/is_json.txt"
 
 # ---------------------------------------------------------------------------
 echo "==> real logical name: a file that names its own module still elaborates (SelfRef.v)"
@@ -362,13 +426,13 @@ grep -q "^Total: 2 file(s) analyzed, 0 failed, 0 ambiguous use site(s)" "$WORK/b
 echo "==> batch mode: --format summary / json report per file"
 "$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
   --dir test/fixtures/batch --format summary > "$WORK/batch_summary.txt"
-grep -q "^test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used" "$WORK/batch_summary.txt"
+grep -q "^test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s) (0 shadowing, 0 partly imported, 0 unknown, 0 latent, 0 local-only), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used" "$WORK/batch_summary.txt"
 grep -q "^test/fixtures/batch/Two.v: NamespaceAnalysis:" "$WORK/batch_summary.txt"
 "$CLI" -R "$WORK/mydev" MyDev --domain MyDev.PartA --domain MyDev.PartB \
   --dir test/fixtures/batch --format json > "$WORK/batch_json.txt"
 grep -q '"file":"test/fixtures/batch/One.v","report":{' "$WORK/batch_json.txt"
-grep -q '"name":"K","winner":"MyDev.PartB.K","alternatives":\["MyDev.PartA.K"\]' "$WORK/batch_json.txt"
-grep -q '"failed":0,"ambiguous_sites":0}$' "$WORK/batch_json.txt"
+grep -q '"name":"K","winner":"MyDev.PartB.K","alternatives":\[{"name":"MyDev.PartA.K","status":"not_imported"}\]' "$WORK/batch_json.txt"
+grep -q '"failed":0,"ambiguous_sites":0,"by_kind":{"shadowing":0,"partly_imported":0,"unknown":0,"latent":0,"local_only":0}}$' "$WORK/batch_json.txt"
 
 echo "==> batch mode over a real, built project: no self-clashes, no cross-file collisions"
 # Uses.v Requires Base, whose compiled copy is exactly what the old

@@ -30,3 +30,8 @@
 -R test/fixtures/libs/exclwinner/b ExclWinLibB
 -R test/fixtures/libs/usesite/a UseLibA
 -R test/fixtures/libs/usesite/b UseLibB
+-R test/fixtures/libs/importstatus/a ISLibA
+-R test/fixtures/libs/importstatus/b ISLibB
+-R test/fixtures/libs/importstatus/c ISLibC
+-R test/fixtures/libs/importstatus/d ISLibD
+-R test/fixtures/libs/importstatus/e ISLibE

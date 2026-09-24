@@ -1,5 +1,11 @@
 open Names
 
+(** [fold_globals f acc] folds [f] over every global loaded into the current
+    environment: every constant, every type of every (mutual) inductive
+    block -- not just the first -- and every constructor of each. The one
+    environment walk both {!members_of_domains} and {!Import_status} use. *)
+val fold_globals : (GlobRef.t -> 'a -> 'a) -> 'a -> 'a
+
 (** [members_of_domains domains] returns every constant, inductive type, and
     constructor loaded into the current environment whose fully-qualified
     name starts with one of the given [domains] prefixes. Mirrors what [Print

@@ -26,6 +26,7 @@ command) has zero examples anywhere; see the "Not built" section.
 | Constructor scanning | `Examples.md` §2 | `ConstructorClash.v`/`Cli.v` | "constructor clash" | `src/domain_scan.ml` |
 | Excluded-winner edge case (real winner excluded → no winner shown, not hidden) | `Examples.md` §5 | `ExcludedWinner.v`/`Cli.v` | "excluded winner" | `src/clash_detect.ml` (`winner` computation) |
 | Ambiguous uses, judged at each use site (mid-file `Import` flip, `Section`-scoped `Import`, qualified use not reported) | `Examples.md` §18 | `UseSite.v`/`Cli.v` | "use sites" / "use sites, CLI parity" | `src/glob_capture.ml` (`judge_use_site`), `src/clash_detect.ml` (`ambiguous_uses`), `src/report.ml` |
+| Import status per alternative (shadowed / not imported / partly imported / unknown / Local) and per-use kind | `Examples.md` §20 | `ImportStatus.v`/`Cli.v`, `libs/importstatus/{a..e}` | "import status" / "import status, CLI parity" | `src/import_status.ml`, `src/glob_capture.ml` (`candidate_of`), `src/clash_detect.ml` (`kind_of`), `src/report.ml` |
 | Tool-loaded libraries excluded from use sites | `Examples.md` §18 | `Hypothetical.v`/`Cli.v` | "hypothetical domain, CLI parity" | `src/ensure_loaded.ml` (`loaded_by_tool`) |
 | Target elaborated under its real logical name, not `Top` | `Examples.md` §18 | `libs/selfref/SelfRef.v` | "real logical name" | `cli/namespace_analysis_cli.ml` (`analyze`) |
 | Batch/`--dir` mode: each file analyzed on its own, in its own process | `Examples.md` §18 (§7 is the superseded original) | `batch/{One,Two}.v`, `batchproj/*.v` | "batch mode" (four sections) | `cli/namespace_analysis_cli.ml` (`run_batch`, `run_worker`) |
@@ -81,9 +82,9 @@ command) has zero examples anywhere; see the "Not built" section.
 - **`--strict` CI exit-code mode.** Roadmap item; the CLI exits 0 today
   regardless of what it finds (1 only when a file fails to elaborate).
 - **Parallel batch mode (`-j`).** Roadmap item; workers run one at a time.
-- **Splitting ambiguous uses into "imported, then shadowed" vs "loaded but
-  not imported."** Roadmap item, blocked on Rocq's public `Nametab` API
-  (README "Known limitations", `Examples.md` §18).
+- **An exact import status.** The built-in one (§20) is an indirect test
+  that reports its undecided cases; an exact one needs an upstream
+  `Nametab` primitive (README Roadmap).
 - **File-path domain arguments** (resolving a `.v` path to its module
   prefix, rather than requiring the logical dirpath). Roadmap item.
 - **`_CoqProject`/`Makefile` auto-parsing for `--dir`.** Explicitly out of

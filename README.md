@@ -35,6 +35,10 @@ Both report three things:
    file-level lint: each use is judged against the namespace as it stood on
    that line, so a `Section`/`Module`-scoped `Import`, or a later `Import`
    that changes what the same name means further down, is accounted for.
+   Each other candidate is labeled with whether its module was imported
+   there: `shadowed` (it was, and lost — real "last import wins") or
+   `not imported` (only loaded; importing it later would change what the
+   name means). See "Import status" below.
 2. **Clashes** — for the given domain(s) (library/module prefixes, in the
    same style as `Print Namespace`), every short name with more than one
    candidate definition in the namespace *at the analysis point* (where the
@@ -71,22 +75,22 @@ define `x`:
 ```
 
 ```
-NamespaceAnalysis: 2 symbol(s) in scanned domain(s)
+NamespaceAnalysis: 4 symbol(s) in scanned domain(s)
 Ambiguous uses (judged where each name was used):
 ┌─────────────────┬─────────────────────────────────────────┐
 │ Name as written │ Candidates at that point (alphabetical) │
 ├─────────────────┼─────────────────────────────────────────┤
 │ x (lines 5, 10) │ UseLibA.UseA.x <- used                  │
-│                 │ UseLibB.UseB.x                          │
+│                 │ UseLibB.UseB.x (not imported)           │
 ├─────────────────┼─────────────────────────────────────────┤
-│ x (lines 8, 13) │ UseLibA.UseA.x                          │
+│ x (lines 8, 13) │ UseLibA.UseA.x (shadowed)               │
 │                 │ UseLibB.UseB.x <- used                  │
 └─────────────────┴─────────────────────────────────────────┘
 Clashes (namespace state at the analysis point):
 ┌────────────┬───────────────────────────┐
 │ Short name │ Candidates (alphabetical) │
 ├────────────┼───────────────────────────┤
-│ x          │ UseLibA.UseA.x            │
+│ x          │ UseLibA.UseA.x (shadowed) │
 │            │ UseLibB.UseB.x <- used    │
 └────────────┴───────────────────────────┘
 Used identifiers:
@@ -113,8 +117,34 @@ shows what actually happened on each line: `UseLibA.UseA.x` on line 5;
 again on line 10, because the section's `Import` ended with `End S`; and
 `UseLibB.UseB.x` on line 13, after the file-level `Import`. Line 11 writes the
 fully qualified name, which has only one candidate, so it's not reported.
-Uses that saw the same winner and the same alternatives are grouped into
-one row.
+Uses that saw the same winner and the same alternatives (with the same
+import status) are grouped into one row. The labels say why each
+alternative lost: on lines 5 and 10, `UseB` hadn't been imported (latent —
+only `Require`d); on lines 8 and 13, `UseA` had been imported and was
+overridden by the later `Import` (real shadowing).
+
+### Import status
+
+Rocq's public API can't say which other candidates for a name were
+imported (see "Known limitations"), so the tool tests it indirectly:
+importing a module makes *all* of its definitions reachable by bare name,
+so it checks whether the module's uniquely named members resolve, bare, at
+that point. Every non-winning candidate gets one label:
+
+| Label | Meaning |
+|---|---|
+| `(shadowed)` | its module is imported — it was reachable by this name and lost ("last import wins") |
+| `(not imported)` | its module is only loaded — latent: importing it later would change what the name means |
+| `(partly imported k/n)` | a filtered import (`Import M (x)`) brought in k of the module's n testable members — the tool can't tell whether this one came along |
+| `(import status unknown)` | the module has no uniquely named member to test (Stdlib's `Pos`/`N`/`Z`, which share nearly every name, are the usual case) |
+| `(Local)` | the candidate is declared `Local` — never reachable by its bare name, imported or not |
+
+Each ambiguous use then counts as **shadowing**, **partly imported**,
+**unknown**, **latent** or **local-only**, by its strongest label in that
+order. On all of Iris this matched a hand check on a 30-site random sample,
+30 out of 30 (`case-study/iris/`), and costs about 3–4% extra time over
+all of Iris. The Clashes grid gets the same labels, judged at the
+analysis point — so a hypothetical domain's candidates read `(not imported)`.
 
 The winner (`<- used`) is always marked with that plain-text arrow regardless
 of terminal support, and *additionally* bold+colored when the CLI's stdout is
@@ -262,12 +292,12 @@ prints them one after another (`==> <file>` headers in the grid format),
 followed by a total:
 
 ```
-test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
-test/fixtures/batch/Two.v: NamespaceAnalysis: 0 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
-Total: 2 file(s) analyzed, 0 failed, 0 ambiguous use site(s)
+test/fixtures/batch/One.v: NamespaceAnalysis: 0 ambiguous use site(s) (0 shadowing, 0 partly imported, 0 unknown, 0 latent, 0 local-only), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
+test/fixtures/batch/Two.v: NamespaceAnalysis: 0 ambiguous use site(s) (0 shadowing, 0 partly imported, 0 unknown, 0 latent, 0 local-only), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 1 identifier(s) used
+Total: 2 file(s) analyzed, 0 failed, 0 ambiguous use site(s) (0 shadowing, 0 partly imported, 0 unknown, 0 latent, 0 local-only)
 ```
 
-Only the ambiguous-use-site count is added up across files; the other
+Only the ambiguous-use-site counts are added up across files; the other
 counts describe each file's own (overlapping) environment, so a sum of them
 wouldn't mean anything. A file that fails to elaborate is reported as
 `FAILED` (its error goes to stderr), the remaining files still run, and the
@@ -312,10 +342,11 @@ example above. `summary` prints one line of counts instead — no per-name
 grid:
 
 ```
-NamespaceAnalysis: 1 ambiguous use site(s), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 2 identifier(s) used
+NamespaceAnalysis: 1 ambiguous use site(s) (1 shadowing, 0 partly imported, 0 unknown, 0 latent, 0 local-only), 3 symbol(s) in scanned domain(s), 1 clash(es) found (0 with no winner marked), 2 identifier(s) used
 ```
 
-"Ambiguous use sites" counts distinct (name, line) pairs, not grouped rows.
+"Ambiguous use sites" counts distinct (name, line) pairs, not grouped rows,
+split by kind (see "Import status").
 "No winner marked" is one combined count — it doesn't distinguish a purely
 hypothetical clash (nothing among the candidates is actually imported yet)
 from the "excluded winner" case above (something *is* actually imported,
@@ -333,11 +364,14 @@ scrolling through one, not after.
 numbers out programmatically instead of grepping terminal output:
 
 ```json
-{"member_count":3,"ambiguous_uses":[{"name":"K","lines":[6],"winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"clashes":[{"name":"K","winner":"MyDev.PartB.K","alternatives":["MyDev.PartA.K"]}],"used":[{"identifier":"helper","defined_in":"MyDev.PartA"},{"identifier":"K","defined_in":"MyDev.PartB"}]}
+{"member_count":3,"ambiguous_uses":[{"name":"K","lines":[6],"kind":"shadowing","winner":"MyDev.PartB.K","alternatives":[{"name":"MyDev.PartA.K","status":"shadowed"}]}],"clashes":[{"name":"K","winner":"MyDev.PartB.K","alternatives":[{"name":"MyDev.PartA.K","status":"shadowed"}]}],"used":[{"identifier":"helper","defined_in":"MyDev.PartA"},{"identifier":"K","defined_in":"MyDev.PartB"}]}
 ```
 
-In batch mode, that per-file object is wrapped:
-`{"files":[{"file":"<path>","report":{...}} or {"file":"<path>","error":true}, ...],"failed":<n>,"ambiguous_sites":<n>}`.
+An alternative's `status` is `shadowed`, `not_imported`, `partial` (with
+`resolving` and `tested` counts), `unknown` or `local`; a use's `kind` is
+`shadowing`, `partly_imported`, `unknown`, `latent` or `local_only`. In
+batch mode, that per-file object is wrapped:
+`{"files":[{"file":"<path>","report":{...}} or {"file":"<path>","error":true}, ...],"failed":<n>,"ambiguous_sites":<n>,"by_kind":{"shadowing":<n>,...}}`.
 
 **"Defined in" is always the *defining* library's logical path**, not the
 analyzed source file: `Dumpglob`'s own `filepath` field (which
@@ -369,6 +403,10 @@ machinery Rocq already ships — no new parser or elaborator required:
   written in the source) right then sees exactly the namespace Rocq just
   resolved it against — no separate pass over the file, and no extra
   elaboration.
+- **Import status** (shadowed vs. only loaded) has no public API at all, so
+  it's inferred: `Domain_scan`'s environment walk groups every global by
+  module, and a module counts as imported when its uniquely named members
+  resolve by bare name (`Nametab.locate`) at that point.
 - **Auto-loading a not-yet-imported domain** uses the same
   `Loadpath.locate_absolute_library` → `Library.intern_from_file` →
   `Library.require_library_from_dirpath` pipeline the real `Require`
@@ -386,6 +424,7 @@ src/
   ensure_loaded.ml           Auto-Require a domain that isn't loaded yet, without Import-ing it.
   glob_capture.ml               Capture resolved identifiers via Dumpglob.Feedback, judging each
                                 use site against the namespace at that moment.
+  import_status.ml              Is a candidate's module imported right now? (indirect sibling test)
   text_table.ml                    Shared box-drawing grid renderer (Pp.tag and ANSI backends).
   report.ml                           Shared report type + renderer (used by both front ends).
   g_namespace_analysis.mlg               The `NamespaceAnalysis` vernacular command (native plugin).
@@ -477,7 +516,11 @@ winner falls under an excluded prefix is still reported, with no winner
 marked, rather than either hidden entirely or shown anyway; use sites
 judged where they happen (`UseSite.v`: a mid-file `Import` flipping a
 name's meaning, a `Section`-scoped `Import` ending with its section, and a
-fully qualified use not being reported); a file that names its own module
+fully qualified use not being reported); every import-status label and
+use kind (`ImportStatus.v`: not imported, a filtered `Import M (x)` giving
+partly imported, a `Local` candidate, a module with nothing testable, real
+shadowing after a later `Import`, and the same winner/alternative split
+into two rows when only an import status changed); a file that names its own module
 (`SelfRef.v`) elaborating under its real logical name; batch mode giving
 each file its own report, never duplicating a file against its own compiled
 copy or aborting on two files that define the same name, and reporting a
@@ -567,7 +610,8 @@ in `vsrocq.path` as the fallback.
 
 `theories/Loader.v` alone has nothing to actually analyze. To open one of
 the demo fixtures directly (`test/fixtures/Main.v`,
-`test/fixtures/UseSite.v`, `test/fixtures/MutualInductive.v`,
+`test/fixtures/UseSite.v`, `test/fixtures/ImportStatus.v`,
+`test/fixtures/MutualInductive.v`,
 `test/fixtures/ConstructorClash.v`, `test/fixtures/ExcludedWinner.v` — the ones that call the native
 `NamespaceAnalysis` command, as opposed to the `*Cli.v` files, which are
 CLI-only and have no live-editable payload), its own dependency libraries
@@ -618,18 +662,21 @@ open question) and what's left to do.
   `-dump-glob` file output for the rest of that compilation unit. Irrelevant
   unless you're simultaneously generating `coqdoc` documentation from the
   same run.
-- **An ambiguous use doesn't say whether the other candidates were imported.**
-  Its alternatives are every loaded global whose name ends in what was
-  written — the same set `Locate` shows — so they mix two situations: a
-  candidate that *was* imported and then shadowed by a later `Import` (real
-  "last import wins"), and one whose module was only `Require`d (latent:
-  importing it later would flip the result). Rocq's public `Nametab` API
-  doesn't expose the difference: `locate_all` returns only the head entry
-  of each name-tree node, and the shadowed entries behind it live in
-  `nametab.ml`'s internal state, with no import-status query in
-  `Declaremods` either. Libraries the tool itself loaded (hypothetical
-  domains, via `Ensure_loaded`) are left out of use sites entirely, since
-  the file never loaded them.
+- **Import status is an approximation.** An ambiguous use's alternatives
+  are every loaded global whose name ends in what was written — the same
+  set `Locate` shows — which mixes candidates that *were* imported and then
+  shadowed with ones whose module was only `Require`d. Rocq's public
+  `Nametab` API doesn't expose the difference: `locate_all` returns only
+  the head entry of each name-tree node, and the shadowed entries behind it
+  live in `nametab.ml`'s internal state, with no import-status query in
+  `Declaremods` either. The tool's labels (see "Import status") come from
+  an indirect test instead, which can't decide two cases and says so: a
+  filtered import (`partly imported k/n`) and a module with no uniquely
+  named member (`import status unknown`). A `#[local]` record field is also
+  not recognized as `Local`, so a module with one shows as `partly imported
+  (n-1)/n` even when fully imported. Libraries the tool itself loaded
+  (hypothetical domains, via `Ensure_loaded`) are left out of use sites
+  entirely, since the file never loaded them.
 - **Use sites are judged from the source text on disk.** The written form
   of a reference is only available as a byte range, so it's read from the
   file. If the file on disk doesn't match what was elaborated (e.g. an
@@ -650,8 +697,10 @@ open question) and what's left to do.
   suffix in the grids (both front ends, both Clashes and Ambiguous uses),
   rather than being silently
   dropped — a `Local` member could still be worth surfacing (e.g. it
-  becomes a real problem if someone later removes the `Local`). Not shown
-  in `--format summary`/`json`. Scoped to constants only — `Local` outside
+  becomes a real problem if someone later removes the `Local`). In
+  `--format json` it's an alternative's `"status":"local"`, and uses whose
+  only alternatives are `Local` count as local-only in the summary. Scoped
+  to constants only — `Local` outside
   a section isn't a distinct state Rocq's inductive/constructor machinery
   tracks at all. Sections themselves were never affected — a `Variable`
   never becomes its own symbol, it's abstracted into an extra argument on
@@ -673,15 +722,14 @@ open question) and what's left to do.
 - Parallel batch mode (`-j N`): the per-file workers are independent
   processes, so running several at once is straightforward; they run one
   at a time for now.
-- Split ambiguous uses into "imported, then shadowed" and "loaded but not
-  imported" — needs a way to see `Nametab`'s shadowed entries that the
-  public API doesn't offer (see "Known limitations"). Reading Rocq's private
-  name-table state would work but could break silently between Rocq
-  versions; the cleaner route is an upstream request for a public function
-  returning the shadowed entries under a name as written — which
-  candidates are import-visible as that name, not just which ones exist
-  (the latter is already public via `Nametab.locate_all`). `Locate` could
-  use it too, to say what shadows what.
+- An exact import status, replacing the indirect test (see "Import
+  status" and "Known limitations"). Reading Rocq's private name-table
+  state would work but could break silently between Rocq versions; the
+  cleaner route is an upstream request for a public function returning the
+  shadowed entries under a name as written — which candidates are
+  import-visible as that name, not just which ones exist (the latter is
+  already public via `Nametab.locate_all`). `Locate` could use it too, to
+  say what shadows what.
 - `--strict` CI exit-code mode — `--format json` (see "Output formats") gives
   this a firmer footing than parsing terminal output, but the exit-code flag
   itself still isn't built.
@@ -691,13 +739,10 @@ open question) and what's left to do.
   an arbitrary project without hand-supplied `-R`/`-Q` mappings, and
   analyze exactly the files the project builds — see "Batch mode" above for
   why this was deliberately left out for now.
-- `--format summary`/`json` don't carry the `(Local)` label the grid now
-  does (see "Known limitations" above) — `--summary`'s "no winner marked"
-  count (see "Output formats") still can't split out a `Local`-caused false
-  positive from a genuine one. Would need either a `Clash_detect`
-  signature change or a JSON schema change (adding a `local` field to
-  each candidate) — not done, since no real consumer of that distinction
-  in machine-readable form exists yet.
+- `--summary`'s clash-level "no winner marked" count (see "Output
+  formats") still can't split out a `Local`-caused false positive from a
+  genuine one (the ambiguous-use counts can — see "Import status"); would
+  need a `Clash_detect` signature change.
 - `ImportAnalysis` (designed, not yet built): a different question from
   `NamespaceAnalysis` — "of everything an imported domain exports, which
   pieces does this file actually depend on," so you can tell whether a

@@ -951,7 +951,9 @@ the case study itself — that's Workstream 9, Pass 2.
   while the CLI only loads it at the end. `Ensure_loaded` now records
   everything it loaded (`loaded_by_tool`), and those are never use-site
   candidates.
-- **"Imported then shadowed" vs "loaded but not imported" isn't split.** A
+- **"Imported then shadowed" vs "loaded but not imported" isn't split**
+  (as of Workstream 10 -- since Workstream 11 the tool labels it,
+  approximately; see §20). A
   use site's alternatives are every loaded global whose name ends in what
   was written (the same set `Locate` shows). Checked Rocq's `nametab.ml`
   directly: `locate_all` returns only the head entry of each name-tree
@@ -982,7 +984,8 @@ Full reproducible method + results live in `case-study/iris/`
 generated `triage_output.txt`, `sites.tsv`, `output.json`), not duplicated
 here. Headline: all 178 files of Iris, one process each, in about 3.5
 minutes; **2,251 ambiguous use sites**, which a separate throwaway probe
-splits into 873 real shadowing, 1,308 latent and 70 local-only (checked by
+(since built into the tool, §20) splits into 873 real shadowing, 1,308
+latent and 70 local-only (checked by
 hand on a 30-site sample). Almost all the real shadowing is deliberate
 layering (heap_lang's concrete `val`/`expr`/`fill` over the generic language
 interface: 601 sites); the talk-worthy cases reuse one name for different
@@ -991,4 +994,110 @@ concepts (`logatom_lock`'s `Free`/`state`, `nsteps`, stdpp's two
 mattering in real code: `state` means `language.state` until a
 `Section`-scoped `Import ectx_language`, and `ectx_language.state` inside
 it. The `(Local)` label (§17) fires 596 times on Iris's sealing idiom.
+
+## 20. Built-in import status: shadowed vs. latent (Workstream 11)
+
+The Iris case study (§19) split ambiguous uses into real shadowing and
+latent with a throwaway probe; this workstream builds the same test into
+the tool (`src/import_status.ml`). Every non-winning candidate, in both
+grids, now says whether its module is imported at that point. The one
+design rule: **label, don't guess** — the two cases the test can't decide
+are reported as such, instead of resolved by the Iris-specific judgment
+calls the case study used.
+
+`test/fixtures/ImportStatus.v` covers every label and kind: `ISA` imported;
+`ISB` only `Require`d at first; `ISC` imported through a filter; `ISD`'s
+`x`/`y` `Local`; `ISE` has no uniquely named member:
+
+```coq
+From ISLibA Require Import ISA.
+From ISLibB Require ISB.
+From ISLibC Require ISC.
+Import ISC (isc_one).
+From ISLibD Require Import ISD.
+From ISLibE Require ISE.
+Check x.     (* line 8 *)
+Check y.
+Check z.
+Check w.     (* line 11 *)
+Import ISB.
+Check x.
+Check w.
+Import ISA.
+Check w.     (* line 16 *)
+```
+
+```
+Ambiguous uses (judged where each name was used):
+┌─────────────────┬─────────────────────────────────────────┐
+│ Name as written │ Candidates at that point (alphabetical) │
+├─────────────────┼─────────────────────────────────────────┤
+│ x (line 8)      │ ISLibA.ISA.x <- used                    │
+│                 │ ISLibB.ISB.x (not imported)             │
+│                 │ ISLibC.ISC.x (partly imported 1/2)      │
+│                 │ ISLibD.ISD.x (Local)                    │
+│                 │ ISLibE.ISE.x (import status unknown)    │
+├─────────────────┼─────────────────────────────────────────┤
+│ y (line 9)      │ ISLibA.ISA.y <- used                    │
+│                 │ ISLibD.ISD.y (Local)                    │
+├─────────────────┼─────────────────────────────────────────┤
+│ z (line 10)     │ ISLibA.ISA.z <- used                    │
+│                 │ ISLibE.ISE.z (import status unknown)    │
+├─────────────────┼─────────────────────────────────────────┤
+│ w (line 11)     │ ISLibA.ISA.w <- used                    │
+│                 │ ISLibB.ISB.w (not imported)             │
+├─────────────────┼─────────────────────────────────────────┤
+│ x (line 13)     │ ISLibA.ISA.x (shadowed)                 │
+│                 │ ISLibB.ISB.x <- used                    │
+│                 │ ISLibC.ISC.x (partly imported 1/2)      │
+│                 │ ISLibD.ISD.x (Local)                    │
+│                 │ ISLibE.ISE.x (import status unknown)    │
+├─────────────────┼─────────────────────────────────────────┤
+│ w (line 14)     │ ISLibA.ISA.w (shadowed)                 │
+│                 │ ISLibB.ISB.w <- used                    │
+├─────────────────┼─────────────────────────────────────────┤
+│ w (line 16)     │ ISLibA.ISA.w <- used                    │
+│                 │ ISLibB.ISB.w (shadowed)                 │
+└─────────────────┴─────────────────────────────────────────┘
+```
+
+Lines 11 and 16 have the same winner and the same alternative, but
+`ISB.w` went from not imported to shadowed in between, so they stay
+separate rows. The fixture also ends with a module `Late`, defined in the
+file itself after the tool's module table was first built; the `x` used
+after it (line 21, not shown) must still find `Late` and label it
+`(not imported)` rather than `(import status unknown)`. `--format
+summary` for the whole file: `8 ambiguous use site(s) (4 shadowing, 1
+partly imported, 1 unknown, 1 latent, 1 local-only)`.
+
+**Against the probe, on real data.** Rerunning all of Iris with the built-in
+labels matched the probe's verdict on all 5,841 (use site, alternative)
+pairs, and `case-study/iris/triage.py`'s documented judgment calls give the
+same 873 / 1,308 / 70 split. The tool's own, undecided-cases-included split
+is 855 shadowing / 63 partly imported / 351 unknown / 912 latent / 70
+local-only. Testing constructors and every inductive of a mutual block as
+siblings too (the probe only used constants and first inductives) changed
+no verdict. The case study now uses the built-in labels directly; its
+probe patch is gone from the tree (git history: `b1f4269`).
+
+**Cost, and a performance fix found by measuring it.** The first
+whole-corpus A/B against the previous build was 223 s vs. 269 s (+21%),
+although per-file single runs were only +1% in total. The difference:
+batch workers rendered *both* the grid and the JSON whatever `--format`
+asked for, and the new clash-grid labels were computed in each. Now a
+worker renders only the requested format, and clash-grid statuses are
+computed once per module per report (exact, since a clash candidate's own
+name is never a testable sibling). Result, back to back on all of Iris:
+`summary` 222 s → 229 s, `json` 217–219 s → 226–228 s, about +3–4%, with
+whole-corpus output byte-identical to the unoptimized version. One
+intermediate attempt memoized per `GlobRef` and was caught by that
+identity check: `GlobRef.Map` compares canonical names, which Stdlib's
+`BinInt.Z` shares with the `BinIntDef.Z` it `Include`s, so statuses
+leaked between the two modules.
+
+**Confirmed load-bearing**, one revert at a time: collapsing the partial
+tally to one sibling (the probe's first version), dropping the `Local`
+override, dropping import status from the grouping key, and never
+rebuilding the module table on a miss each make the new `ImportStatus.v`
+section fail.
 

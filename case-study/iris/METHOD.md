@@ -26,8 +26,10 @@ file too many. Iris's `tests/` directory isn't built or installed either.
 
 ## Environment
 
-- This repo at commit `04ada98` or later (the analysis code hasn't changed
-  since `540849f`), Rocq 9.1.1, via `nix develop`.
+- This repo with Workstream 11 (built-in import status) or later, Rocq
+  9.1.1, via `nix develop`. The first version of this case study (commit
+  `b1f4269`) needed a separate probe-patched run for the import-status
+  split; that probe is now part of the tool.
 - About 25 GB free disk is plenty; the Iris/stdpp/Stdlib store paths are a
   few hundred MB, fetched prebuilt from `cache.nixos.org`.
 - `gitlab.mpi-sws.org` (Iris's home) wasn't reachable from the machine this
@@ -59,39 +61,27 @@ IRIS="$(nixpkg iris)/$UC/iris"
 RUN=$(mktemp -d)
 ```
 
-**Run 1: the analysis itself** (unmodified CLI). `--domain iris` covers
-all four logical roots, since the other three sit under `iris.`. Name the
-domain explicitly: with 0 domains, the clash grid would instead scan every
-loaded library, Stdlib and stdpp included. `-w -notation-overridden` only
-silences a warning Iris itself turns off in its own build (`config/flags`).
+**The run.** `--domain iris` covers all four logical roots, since the
+other three sit under `iris.`. Name the domain explicitly: with 0 domains,
+the clash grid would instead scan every loaded library, Stdlib and stdpp
+included. `-w -notation-overridden` only silences a warning Iris itself
+turns off in its own build (`config/flags`).
 
 ```sh
 (cd "$RUN" && /usr/bin/time -l "$CLI" -w -notation-overridden --domain iris \
-  --dir "$IRIS" --format json > batch.json 2> run1.err)
+  --dir "$IRIS" --format json > batch.json 2> run.err)
 ```
 
-**Run 2: the import-status probe** (throwaway instrumentation, never
-committed to `src/`). It re-runs the same analysis and additionally prints,
-for every (ambiguous use site, alternative) pair, whether the alternative's
-module was imported at that line. See "How the split is made" below.
+**Analysis**: every number in `RESULTS.md` comes from this script's output
+(`triage_output.txt`). It also regenerates `sites.tsv` (one row per
+ambiguous use site) and `output.json` (the run, trimmed to counts plus every
+ambiguous use; the full file is ~21 MB).
 
 ```sh
-git apply case-study/iris/import_probe.patch && dune build
-(cd "$RUN" && NA_TRIAGE=1 "$CLI" -w -notation-overridden --domain iris \
-  --dir "$IRIS" --format summary > run2.txt 2> triage.txt)
-git checkout -- src/glob_capture.ml && dune build
+python3 case-study/iris/triage.py "$RUN/batch.json" case-study/iris
 ```
 
-**Analysis**: every number in `RESULTS.md` comes from this script's output.
-It also regenerates `sites.tsv` (one row per ambiguous use site) and
-`output.json` (run 1, trimmed to counts plus every ambiguous use; the full
-file is ~21 MB).
-
-```sh
-python3 case-study/iris/triage.py "$RUN/batch.json" "$RUN/triage.txt" case-study/iris
-```
-
-Each run takes about 3.5 minutes (178 files, one worker process each, run
+The run takes about 3.5–4 minutes (178 files, one worker process each, run
 one after another).
 
 ## How the split is made
@@ -108,19 +98,21 @@ expose them (see the README's "Known limitations"):
   often indirectly), never imported. Nothing is overridden now; importing it
   later would change what the name means.
 
-The probe tells them apart **without** Rocq's private state, using an
-indirect test: importing a module makes *all* of its definitions reachable
-by bare name. So for each alternative, it takes every other definition in
-the same module whose name no other loaded definition shares, and checks
-whether that name resolves, bare, at the use site:
+The tool tells them apart **without** Rocq's private state
+(`src/import_status.ml`), using an indirect test: importing a module makes
+*all* of its definitions reachable by bare name. So for each alternative,
+it takes every other definition in the same module whose name no other
+loaded definition shares, and checks whether that name resolves, bare, at
+the use site. The tool reports five labels; `triage.py` then resolves the
+two undecided ones for Iris specifically:
 
-| Siblings resolving | Verdict | How `triage.py` treats it |
+| Siblings resolving | Tool's label | How `triage.py` treats it |
 |---|---|---|
-| all | module imported | shadowed |
-| none | module not imported | latent |
-| some | a filtered import, e.g. `Export M (x)` | ≥ 90% resolving → shadowed; below → latent (see below) |
-| no testable sibling | unknown | latent (see below) |
-| *(any)*, but the alternative is itself `Local` | — | its own category: a `Local` definition is never reachable by its bare name, imported or not, so it can't be shadowed and can't flip anything later |
+| all | `shadowed` | shadowed |
+| none | `not imported` | latent |
+| some | `partly imported k/n` (a filtered import, e.g. `Export M (x)`) | ≥ 90% resolving → shadowed; below → latent (see below) |
+| no testable sibling | `import status unknown` | latent (see below) |
+| *(any)*, but the alternative is itself `Local` | `Local` | its own category: a `Local` definition is never reachable by its bare name, imported or not, so it can't be shadowed and can't flip anything later |
 
 A use site counts as **shadowed** if any of its alternatives is shadowed;
 otherwise **latent** if any is latent; otherwise **local-only**.
@@ -139,12 +131,17 @@ Two judgment calls, each checked against the source rather than assumed:
   `Export`ed anywhere in Iris or stdpp. So they count as latent.
   (`triage.py` prints the list.)
 
-The probe went through three versions, each fixing something the hand
-check or a real run turned up: (1) one sibling per module, fooled by
-stdpp's filtered `String` export; (2) all uniquely named siblings, with the
-"filtered" verdict; (3) plus each alternative's own `Local` flag, after
+**History.** The test began as a throwaway probe for this case study and
+went through three versions, each fixing something the hand check or a
+real run turned up: (1) one sibling per module, fooled by stdpp's filtered
+`String` export; (2) all uniquely named siblings, with the "partly
+imported" verdict; (3) plus each alternative's own `Local` flag, after
 Iris's sealing pattern (`Local Definition ..._unseal`) showed up as
-"shadowed". `import_probe.patch` is version 3.
+"shadowed". Version 3 became the tool's `Import_status` (Workstream 11),
+which also tests constructors and every inductive of a mutual block as
+siblings; rerunning Iris with it matched the probe on all 5,841 (use site,
+alternative) pairs. The probe itself is in git history
+(`case-study/iris/import_probe.patch` at commit `b1f4269`).
 
 **Hand verification.** 30 sites drawn at random (seed 2027) from the first
 version's verdicts, stratified 12 shadowed / 12 latent / 6 unknown, were

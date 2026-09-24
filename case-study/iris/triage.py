@@ -1,82 +1,71 @@
 #!/usr/bin/env python3
-"""Turns the two Iris runs (see METHOD.md) into every number RESULTS.md cites.
+"""Turns the Iris run (see METHOD.md) into every number RESULTS.md cites.
 
-Usage: python3 triage.py <batch.json> <triage_stderr.txt> <outdir>
+Usage: python3 triage.py <batch.json> <outdir>
 
-<batch.json>          `--format json` output of the unmodified CLI (run 1).
-<triage_stderr.txt>   stderr of the probe-patched CLI (run 2): one TRIAGE line
-                      per (ambiguous use site, alternative) pair.
-<outdir>              where output.json (trimmed batch JSON) and sites.tsv go.
+<batch.json>   `--format json` output of the CLI over all of Iris.
+<outdir>       where output.json (trimmed batch JSON) and sites.tsv go.
 
-Classification of each alternative, from the probe (import_probe.patch):
-  shadowed  every uniquely named sibling in its module resolves by bare name,
-            so the module is imported: the alternative was import-visible
-            and lost to the winner (real "last import wins").
-  latent    no such sibling resolves: the module is loaded, not imported.
-  filtered  some do, some don't: a filtered import like
-            `Export String (string(..))`. Resolved here by ratio (>= 90%
-            resolving counts as imported: in Iris that's a lone #[local]
-            sibling; the one low-ratio case, Stdlib String at 5/28, was
-            checked by hand against stdpp/strings.v and is latent).
-  unknown   no uniquely named sibling to test. Every module this happens
-            for in Iris (all printed by this script) was checked by grep to
-            be never Import-ed/Export-ed anywhere in Iris or stdpp, so these
-            count as latent.
-  local     the alternative is itself declared Local: never reachable by
-            its bare name, whether or not its module is imported, so it can
-            neither be shadowed nor flip anything later (overrides the
-            above).
-A use site is "shadowed" if any non-excluded alternative is; otherwise
-"latent" if any is; otherwise "local-only".
+Each ambiguous use's alternatives carry the tool's own import-status label
+(Workstream 11; originally prototyped as a throwaway probe for this case
+study, and confirmed to agree with it on all 5,841 (site, alternative)
+pairs):
+  shadowed      every uniquely named sibling in its module resolves by bare
+                name, so the module is imported: the alternative was
+                import-visible and lost to the winner (real "last import
+                wins").
+  not_imported  no such sibling resolves: the module is loaded, not imported.
+  partial       some do, some don't: a filtered import like
+                `Export String (string(..))`.
+  unknown       no uniquely named sibling to test.
+  local         the alternative is itself Local: never reachable by its bare
+                name.
+
+The tool reports partial and unknown as such. For Iris only, this script
+then resolves them by two judgment calls, each checked against the source:
+  partial   >= 90% resolving counts as imported: in Iris that's a lone
+            #[local] sibling; the one low-ratio case, Stdlib String at
+            5/28, was checked by hand against stdpp/strings.v and is latent.
+  unknown   every module this happens for in Iris (all printed below) was
+            checked by grep to be never Import-ed/Export-ed anywhere in Iris
+            or stdpp, so these count as latent.
+A use site is "shadowed" if any alternative is; otherwise "latent" if any
+is; otherwise "local-only".
 """
 import collections
 import json
 import sys
 
 PREFIX_MARK = "/user-contrib/"
-EXCLUDED = ("Corelib.",)  # the CLI's default exclusion, mirrored here
 
 
 def rel(path):
     return path.split(PREFIX_MARK, 1)[1] if PREFIX_MARK in path else path
 
 
-def excluded(name):
-    return name.startswith(EXCLUDED)
+def judged(alt, unknown_modules):
+    status = alt["status"]
+    if status == "partial":
+        return "shadowed" if alt["resolving"] / alt["tested"] >= 0.9 else "latent"
+    if status == "unknown":
+        unknown_modules.add(alt["name"].rsplit(".", 1)[0])
+        return "latent"
+    return {"shadowed": "shadowed", "not_imported": "latent", "local": "local"}[status]
 
 
-def load_triage(path):
-    pairs = collections.defaultdict(set)
-    unknown_modules = set()
-    for line in open(path):
-        if not line.startswith("TRIAGE\t"):
-            continue
-        _, f, ln, written, winner, alt, status, sib, local = line.rstrip("\n").split("\t")
-        if local == "local":
-            status = "local"
-        elif status == "filtered":
-            yes, n = map(int, sib.split("/"))
-            status = "shadowed" if yes / n >= 0.9 else "latent"
-        elif status == "unknown":
-            if not excluded(alt):
-                unknown_modules.add(alt.rsplit(".", 1)[0])
-            status = "latent"
-        pairs[(rel(f), int(ln), written)].add((winner, alt, status))
-    return pairs, unknown_modules
-
-
-def classify(pairs):
+def classify(batch):
     sites = {}
-    for key, v in pairs.items():
-        winner = next(iter(v))[0]
-        alts = sorted({(a, s) for _, a, s in v if not excluded(a)})
-        if len({a for a, _ in alts}) + (0 if excluded(winner) else 1) < 2:
-            continue
-        statuses = {s for _, s in alts}
-        kind = next(k for k in ("shadowed", "latent", "local") if k in statuses)
-        kind = "local-only" if kind == "local" else kind
-        sites[key] = (kind, winner, alts)
-    return sites
+    unknown_modules = set()
+    for f in batch["files"]:
+        for a in f["report"]["ambiguous_uses"]:
+            alts = sorted({(x["name"], judged(x, unknown_modules)) for x in a["alternatives"]})
+            statuses = {s for _, s in alts}
+            kind = next(k for k in ("shadowed", "latent", "local") if k in statuses)
+            kind = "local-only" if kind == "local" else kind
+            winner = a["winner"] if a["winner"] is not None else "(excluded)"
+            for ln in a["lines"]:
+                sites[(rel(f["file"]), ln, a["name"])] = (kind, winner, alts)
+    return sites, unknown_modules
 
 
 LANG = ("iris.program_logic.language.", "iris.program_logic.ectx_language.",
@@ -100,21 +89,14 @@ def bucket(winner, shadowed):
     return "other (listed individually)"
 
 
-def main(batch_path, triage_path, outdir):
+def main(batch_path, outdir):
     batch = json.load(open(batch_path))
-    pairs, unknown_modules = load_triage(triage_path)
-    sites = classify(pairs)
-
-    # Cross-check: exactly the use sites the unmodified CLI reported.
-    reported = set()
-    for f in batch["files"]:
-        for a in f["report"]["ambiguous_uses"]:
-            for ln in a["lines"]:
-                reported.add((rel(f["file"]), ln, a["name"]))
-    assert reported == set(sites), (len(reported), len(sites))
+    sites, unknown_modules = classify(batch)
+    assert len(sites) == batch["ambiguous_sites"], (len(sites), batch["ambiguous_sites"])
 
     files = batch["files"]
     print(f"files analyzed: {len(files)}, failed: {batch['failed']}")
+    print(f"tool's own split (before this script's judgment calls): {batch['by_kind']}")
     print(f"ambiguous use sites: {batch['ambiguous_sites']} "
           f"(grouped rows: {sum(len(f['report']['ambiguous_uses']) for f in files)})")
     per_file = collections.Counter(k[0] for k in sites)
@@ -169,4 +151,4 @@ def main(batch_path, triage_path, outdir):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    main(*sys.argv[1:3])

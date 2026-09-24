@@ -99,8 +99,13 @@ Both front ends thread through the same pipeline, one module per stage:
    instead of to disk. This shadows real `-dump-glob` output for the rest of the compilation unit.
    The feedback arrives synchronously, mid-elaboration, so the handler also judges each use site
    right then: it reads the name as written from the source and records `Nametab.locate`/
-   `locate_all` for it (minus libraries `Ensure_loaded` loaded itself). `Clash_detect.ambiguous_uses`
-   later filters and groups these; it never consults the current `Nametab`.
+   `locate_all` for it (minus libraries `Ensure_loaded` loaded itself), plus each alternative's
+   `Import_status` at that moment. `Clash_detect.ambiguous_uses` later filters and groups these; it
+   never consults the current `Nametab`.
+5. **`Import_status`** — whether a candidate's module is imported, which Rocq's public API doesn't
+   expose: a module counts as imported when its uniquely named members (from
+   `Domain_scan.fold_globals`) resolve by bare name right now. Reports `Partial`/`Unknown` rather
+   than guessing when the test can't decide (filtered imports; no testable member).
 
 `Report` has three sections — ambiguous uses (per use site), clashes (the namespace at the
 analysis point: the command's position for the plugin, end of file for the CLI), used

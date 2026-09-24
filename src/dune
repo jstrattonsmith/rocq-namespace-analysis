@@ -2,7 +2,7 @@
  (name namespace_analysis_lib)
  (public_name rocq-namespace-analysis.lib)
  (wrapped false)
- (modules domain_scan clash_detect glob_capture report text_table ensure_loaded)
+ (modules domain_scan clash_detect glob_capture report text_table ensure_loaded import_status)
  (flags
   (:standard -rectypes -w -27))
  (libraries rocq-runtime.vernac))

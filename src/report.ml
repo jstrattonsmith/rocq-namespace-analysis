@@ -6,9 +6,17 @@ type t = {
   clashes : Clash_detect.clash list;
   ambiguous : Clash_detect.ambiguous_use list;
   used : Glob_capture.occurrence list;
+  mutable clash_statuses : Import_status.t DPmap.t;
+      (* memo for [clash_status], per module: filled on first render, which
+         both front ends do right after [make], at the same analysis point.
+         Per module is exact here, see Import_status.of_module. Not per
+         GlobRef: GlobRef.Map compares canonical names, and a module that
+         Includes another (Stdlib's BinInt.Z / BinIntDef.Z) shares them, so
+         two candidates from different modules would collide. *)
 }
 
-let make ~member_count ~clashes ~ambiguous ~used = { member_count; clashes; ambiguous; used }
+let make ~member_count ~clashes ~ambiguous ~used =
+  { member_count; clashes; ambiguous; used; clash_statuses = DPmap.empty }
 
 let qualified_name gr = Libnames.string_of_path (Nametab.path_of_global gr)
 
@@ -36,7 +44,38 @@ let is_local_member = function
 
 let local_marker = " (Local)"
 
-let clash_row (c : Clash_detect.clash) =
+(* Whether a non-winning candidate's module is imported (Import_status): a
+   plain-text suffix, like the other markers, so it survives any terminal. *)
+let status_marker = function
+  | Import_status.Imported -> " (shadowed)"
+  | Import_status.Not_imported -> " (not imported)"
+  | Import_status.Partial (k, n) -> Printf.sprintf " (partly imported %d/%d)" k n
+  | Import_status.Unknown -> " (import status unknown)"
+
+let status_json = function
+  | Import_status.Imported -> {|"status":"shadowed"|}
+  | Import_status.Not_imported -> {|"status":"not_imported"|}
+  | Import_status.Partial (k, n) -> Printf.sprintf {|"status":"partial","resolving":%d,"tested":%d|} k n
+  | Import_status.Unknown -> {|"status":"unknown"|}
+
+(* Clash-grid candidates are judged at report time, which is exactly the
+   moment that grid describes (the command's position for the plugin, the
+   end of the file for the CLI) -- so e.g. a hypothetical domain's
+   candidate reads "not imported". *)
+let clash_status (r : t) gr =
+  if is_local_member gr then None
+  else
+    match Import_status.module_of_global gr with
+    | None -> Some Import_status.Unknown
+    | Some dp -> (
+      match DPmap.find_opt dp r.clash_statuses with
+      | Some st -> Some st
+      | None ->
+        let st = Import_status.of_module dp in
+        r.clash_statuses <- DPmap.add dp st r.clash_statuses;
+        Some st)
+
+let clash_row r (c : Clash_detect.clash) =
   let all =
     match c.winner with
     | Some w -> w :: c.alternatives
@@ -49,10 +88,15 @@ let clash_row (c : Clash_detect.clash) =
   in
   let entries =
     all
-    |> List.map (fun gr -> (qualified_name gr, is_winner gr, is_local_member gr))
-    |> List.sort (fun (a, _, _) (b, _, _) -> String.compare a b)
-    |> List.map (fun (text, is_winner, is_local) ->
+    |> List.map (fun gr -> (qualified_name gr, is_winner gr, is_local_member gr, gr))
+    |> List.sort (fun (a, _, _, _) (b, _, _, _) -> String.compare a b)
+    |> List.map (fun (text, is_winner, is_local, gr) ->
            let text = if is_local then text ^ local_marker else text in
+           let text =
+             match (if is_winner then None else clash_status r gr) with
+             | Some st -> text ^ status_marker st
+             | None -> text
+           in
            let text = if is_winner then text ^ Text_table.plain_marker else text in
            { Text_table.text; emphasized = is_winner })
   in
@@ -61,6 +105,7 @@ let clash_row (c : Clash_detect.clash) =
 let ambiguous_row (a : Clash_detect.ambiguous_use) =
   let candidate is_winner (c : Glob_capture.candidate) =
     let text = if c.local then c.path ^ local_marker else c.path in
+    let text = match c.status with Some st -> text ^ status_marker st | None -> text in
     let text = if is_winner then text ^ Text_table.plain_marker else text in
     (c.path, { Text_table.text; emphasized = is_winner })
   in
@@ -77,8 +122,18 @@ let ambiguous_row (a : Clash_detect.ambiguous_use) =
   in
   { Text_table.label = Printf.sprintf "%s (%s)" a.written lines; entries }
 
-let ambiguous_site_count (r : t) =
-  List.fold_left (fun n (a : Clash_detect.ambiguous_use) -> n + List.length a.lines) 0 r.ambiguous
+let ambiguous_site_count ?kind (r : t) =
+  List.fold_left
+    (fun n (a : Clash_detect.ambiguous_use) ->
+      if (match kind with None -> true | Some k -> a.kind = k) then n + List.length a.lines else n)
+    0 r.ambiguous
+
+let kind_json = function
+  | Clash_detect.Shadowing -> "shadowing"
+  | Partly_imported -> "partly_imported"
+  | Unknown_import -> "unknown"
+  | Latent -> "latent"
+  | Local_only -> "local_only"
 
 (* Past this many distinct clashing names, the grid itself becomes the
    readability problem, not the analysis (confirmed: 1,000 clashes render
@@ -121,7 +176,7 @@ let to_pp (r : t) =
   in
   let clash_body =
     if r.clashes = [] then str "No clashes found."
-    else Text_table.render_pp ~headers:("Short name", "Candidates (alphabetical)") (List.map clash_row r.clashes)
+    else Text_table.render_pp ~headers:("Short name", "Candidates (alphabetical)") (List.map (clash_row r) r.clashes)
   in
   let named_used = List.filter is_named_occurrence r.used in
   let used_body =
@@ -143,6 +198,11 @@ type counts = {
   no_winner_count : int;
   used_count : int;
   ambiguous_sites : int;
+  shadowing_sites : int;
+  partial_sites : int;
+  unknown_sites : int;
+  latent_sites : int;
+  local_only_sites : int;
 }
 
 let counts (r : t) =
@@ -150,12 +210,34 @@ let counts (r : t) =
     clash_count = List.length r.clashes;
     no_winner_count = List.length (List.filter (fun (c : Clash_detect.clash) -> c.winner = None) r.clashes);
     used_count = List.length (List.filter is_named_occurrence r.used);
-    ambiguous_sites = ambiguous_site_count r }
+    ambiguous_sites = ambiguous_site_count r;
+    shadowing_sites = ambiguous_site_count ~kind:Clash_detect.Shadowing r;
+    partial_sites = ambiguous_site_count ~kind:Clash_detect.Partly_imported r;
+    unknown_sites = ambiguous_site_count ~kind:Clash_detect.Unknown_import r;
+    latent_sites = ambiguous_site_count ~kind:Clash_detect.Latent r;
+    local_only_sites = ambiguous_site_count ~kind:Clash_detect.Local_only r }
+
+let add_counts a b =
+  { members = a.members + b.members;
+    clash_count = a.clash_count + b.clash_count;
+    no_winner_count = a.no_winner_count + b.no_winner_count;
+    used_count = a.used_count + b.used_count;
+    ambiguous_sites = a.ambiguous_sites + b.ambiguous_sites;
+    shadowing_sites = a.shadowing_sites + b.shadowing_sites;
+    partial_sites = a.partial_sites + b.partial_sites;
+    unknown_sites = a.unknown_sites + b.unknown_sites;
+    latent_sites = a.latent_sites + b.latent_sites;
+    local_only_sites = a.local_only_sites + b.local_only_sites }
+
+let ambiguous_breakdown c =
+  Printf.sprintf
+    "%d ambiguous use site(s) (%d shadowing, %d partly imported, %d unknown, %d latent, %d local-only)"
+    c.ambiguous_sites c.shadowing_sites c.partial_sites c.unknown_sites c.latent_sites c.local_only_sites
 
 let summary_of_counts c =
   Printf.sprintf
-    "NamespaceAnalysis: %d ambiguous use site(s), %d symbol(s) in scanned domain(s), %d clash(es) found (%d with no winner marked), %d identifier(s) used"
-    c.ambiguous_sites c.members c.clash_count c.no_winner_count c.used_count
+    "NamespaceAnalysis: %s, %d symbol(s) in scanned domain(s), %d clash(es) found (%d with no winner marked), %d identifier(s) used"
+    (ambiguous_breakdown c) c.members c.clash_count c.no_winner_count c.used_count
 
 let to_summary (r : t) = summary_of_counts (counts r)
 
@@ -184,9 +266,11 @@ let to_json (r : t) =
     in
     let alternatives =
       c.alternatives
-      |> List.map qualified_name
-      |> List.sort String.compare
-      |> List.map json_string
+      |> List.map (fun gr -> (qualified_name gr, gr))
+      |> List.sort (fun (a, _) (b, _) -> String.compare a b)
+      |> List.map (fun (name, gr) ->
+             let status = match clash_status r gr with Some st -> status_json st | None -> {|"status":"local"|} in
+             Printf.sprintf {|{"name":%s,%s}|} (json_string name) status)
       |> String.concat ","
     in
     Printf.sprintf {|{"name":%s,"winner":%s,"alternatives":[%s]}|}
@@ -196,13 +280,17 @@ let to_json (r : t) =
     Printf.sprintf {|{"identifier":%s,"defined_in":%s}|}
       (json_string o.ident) (json_string (occurrence_location o))
   in
-  let candidate_json (c : Glob_capture.candidate) = json_string c.path in
+  let alternative_json (c : Glob_capture.candidate) =
+    let status = match c.status with Some st -> status_json st | None -> {|"status":"local"|} in
+    Printf.sprintf {|{"name":%s,%s}|} (json_string c.path) status
+  in
   let ambiguous_json (a : Clash_detect.ambiguous_use) =
-    Printf.sprintf {|{"name":%s,"lines":[%s],"winner":%s,"alternatives":[%s]}|}
+    Printf.sprintf {|{"name":%s,"lines":[%s],"kind":"%s","winner":%s,"alternatives":[%s]}|}
       (json_string a.written)
       (String.concat "," (List.map string_of_int a.lines))
-      (match a.use_winner with Some w -> candidate_json w | None -> "null")
-      (String.concat "," (List.map candidate_json a.use_alternatives))
+      (kind_json a.kind)
+      (match a.use_winner with Some w -> json_string w.path | None -> "null")
+      (String.concat "," (List.map alternative_json a.use_alternatives))
   in
   let clashes_json = r.clashes |> List.map clash_json |> String.concat "," in
   let ambiguous_json_list = r.ambiguous |> List.map ambiguous_json |> String.concat "," in
@@ -218,7 +306,7 @@ let to_string ?(color = false) r =
   in
   let clash_body =
     if r.clashes = [] then "No clashes found."
-    else Text_table.render_string ~ansi:color ~headers:("Short name", "Candidates (alphabetical)") (List.map clash_row r.clashes)
+    else Text_table.render_string ~ansi:color ~headers:("Short name", "Candidates (alphabetical)") (List.map (clash_row r) r.clashes)
   in
   let named_used = List.filter is_named_occurrence r.used in
   let used_body =
